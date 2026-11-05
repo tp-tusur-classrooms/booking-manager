@@ -1,0 +1,53 @@
+{
+  "general": {
+    "creds": "./creds.json"
+  },
+  "networking": {
+    "server_host": "127.0.0.1",
+    "server_port": 4001,
+    "swagger_port": 4002,
+    "frontend": {
+      "origin": ["http://localhost:5000"]
+    }
+  },
+  "logging": {
+    "log_path": "./log",
+    "console_level": "INFO",
+    "file_level": "DEBUG",
+    "max_log_size_mb": 2
+  },
+  "settings": {
+    "API_V1_STR": "/api/v1",
+    "PROJECT_NAME": "booking-manager",
+    "VERSION": "0.1.0",
+    "ENVIRONMENT": "development"
+  },
+  "modules": {
+    "database": {
+      "server": "127.0.0.1",
+      "port": 5432,
+      "db_name": "booking_manager",
+      "pool_size": 20
+    },
+    "token": {
+      "access_token_expire_min": 30,
+      "refresh_token_expire_days": 30,
+      "algorithm": "HS256"
+    },
+    "verification_token": {
+      "code_length": 6,
+      "expiry_minutes": 15,
+      "max_attempts": 5
+    },
+    "mailer": {
+      "smtp_server": "smtp.yandex.ru:465",
+      "sender_email": "noreply@example.com",
+      "templates_path": "./src/domain/security/templates",
+      "mock_sending": true
+    },
+    "files": {
+      "public_path": "./public",
+      "public_url": "http://127.0.0.1:4001/public"
+    }
+  }
+}

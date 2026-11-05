@@ -1,0 +1,14 @@
+{
+  "modules": {
+    "database": {
+      "user": "booking_manager",
+      "password": "booking_manager_local"
+    },
+    "token": {
+      "secret_key": "replace-with-a-random-secret-before-deployment"
+    },
+    "mailer": {
+      "password": "!email_password"
+    }
+  }
+}

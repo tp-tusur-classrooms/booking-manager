@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:18
+    container_name: booking_manager_pg
+    environment:
+      POSTGRES_USER: booking_manager
+      POSTGRES_PASSWORD: booking_manager_local
+      POSTGRES_DB: booking_manager
+    ports:
+      - 5432:5432
+    volumes:
+      - booking_manager_pg_vol:/var/lib/postgresql
+    restart: always
+
+volumes:
+  booking_manager_pg_vol:

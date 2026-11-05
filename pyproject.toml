@@ -1,0 +1,99 @@
+[project]
+name = "booking-manager"
+version = "0.1.0"
+description = "Управление бронированием аудиторий"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "aiofiles>=25.1.0",
+    "aiosmtplib>=5.1.3",
+    "alembic>=1.20.1",
+    "asyncpg>=0.32.0",
+    "bcrypt>=5.0.0",
+    "dependency-injector>=4.49.1",
+    "email-validator>=2.3.0",
+    "fastapi>=0.162.0",
+    "fastapi-pagination[sqlalchemy]>=0.16.2",
+    "pillow>=13.0.0",
+    "pydantic>=2.14.3",
+    "python-jose>=3.5.0",
+    "python-json-logger>=4.2.0",
+    "python-magic>=0.4.27",
+    "python-multipart>=0.0.33",
+    "sqlalchemy[asyncio]>=2.1.8",
+    "uvicorn>=0.54.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "ruff>=0.17.3",
+    "ty>=0.0.97",
+]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 88
+src = ["src"]
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "N",     # pep8-naming
+    "UP",    # pyupgrade - modernize syntax
+    "B",     # flake8-bugbear - common bugs
+    "C4",    # flake8-comprehensions
+    "SIM",   # flake8-simplify
+    "RUF",   # ruff-specific rules
+    "TCH",   # flake8-type-checking - move imports into TYPE_CHECKING blocks
+    "ANN",   # flake8-annotations
+    "S",     # flake8-bandit (security)
+    "PTH",   # flake8-use-pathlib
+    "PL",    # pylint
+    "PERF",  # perflint - performance anti-patterns
+    "FURB",  # refurb - modern Python idioms
+    "LOG",   # flake8-logging
+    "G",     # flake8-logging-format
+    "TRY",   # tryceratops - exception handling
+    "EM",    # flake8-errmsg - exception messages
+]
+ignore = [
+    "ANN401",   # Dynamically typed Any - too strict for general use
+    "S101",     # assert - fine in tests and type narrowing
+    "TRY003",   # Long exception messages - overly pedantic
+    "EM101",    # String literal in exception - common pattern
+    "EM102",    # f-string in exception - common pattern
+    "PLR2004",  # Magic value comparison - too noisy
+    "G004",     # Logging with f-string - widely used pattern
+    "RUF001",
+    "RUF002",   # ambiguous unicode character comment - Russian language is permitted in docstrings
+    "RUF003",   # ambiguous unicode character comment - Russian language is permitted in comments
+    "B008",      # no calling in default - Common fastapi pattern
+    "PERF401",
+    "N818",
+    "S105",
+    "S106",
+    "S107",
+]
+fixable = ["ALL"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["src"]
+split-on-trailing-comma = true
+force-sort-within-sections = true
+
+[tool.ruff.lint.pylint]
+max-args = 8
+max-branches = 12
+max-returns = 6
+
+[tool.ruff.lint.per-file-ignores]
+"alembic/**/*.py" = ["N999", "E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
