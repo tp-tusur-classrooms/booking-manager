@@ -1,13 +1,13 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter, Link, NavLink, Route, Routes } from 'react-router';
+import { BrowserRouter, Link, NavLink, Outlet, Route, Routes } from 'react-router';
 import { AdminPage } from './modules/admin';
 import { UserPage } from './modules/user';
 import './styles.css';
 
-function App() {
+function PublicLayout() {
   return (
-    <div className="min-h-screen bg-[#f7f7f9] text-[#242529]">
+    <>
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex min-h-[87px] max-w-[1440px] flex-wrap items-center justify-between gap-x-8 gap-y-3 px-5 lg:px-16">
           <Link to="/" className="font-semibold">
@@ -24,9 +24,19 @@ function App() {
         </div>
       </header>
       <main className="mx-auto max-w-[1440px] px-5 py-10 lg:px-16">
-        <Routes>
+        <Outlet />
+      </main>
+    </>
+  );
+}
+
+function App() {
+  return (
+    <div className="min-h-screen bg-[#f7f7f9] text-[#242529]">
+      <Routes>
+        <Route path="admin/*" element={<AdminPage />} />
+        <Route element={<PublicLayout />}>
           <Route index element={<UserPage />} />
-          <Route path="admin/*" element={<AdminPage />} />
           <Route
             path="*"
             element={
@@ -38,8 +48,8 @@ function App() {
               </>
             }
           />
-        </Routes>
-      </main>
+        </Route>
+      </Routes>
     </div>
   );
 }

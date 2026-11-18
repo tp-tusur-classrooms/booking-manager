@@ -12,9 +12,15 @@ export type Classroom = {
   photo_url?: string | null;
 };
 
+export type AdminProfile = {
+  role?: string;
+  name?: string | null;
+  unread_notifications?: number;
+};
+
 export const classroomsApi = {
   async profile(signal: AbortSignal) {
-    const { data } = await api.get<{ role?: string }>('/profile', { signal, ...session() });
+    const { data } = await api.get<AdminProfile>('/profile', { signal, ...session() });
     return data;
   },
   async list(signal: AbortSignal) {
