@@ -1,0 +1,22 @@
+{$SITE_ADDRESS:http://127.0.0.1:8080} {
+	bind {$SITE_BIND:127.0.0.1}
+	root * dist
+	encode zstd gzip
+
+	@backend path /api /api/* /public /public/*
+	handle @backend {
+		reverse_proxy {$API_UPSTREAM:127.0.0.1:4001}
+	}
+
+	handle /assets/* {
+		file_server
+	}
+
+	handle {
+		route {
+			try_files {path} /index.html
+			header /index.html Cache-Control "no-cache"
+			file_server
+		}
+	}
+}

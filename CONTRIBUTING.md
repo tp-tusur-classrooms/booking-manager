@@ -44,7 +44,7 @@ Workflow `.github/workflows/ci.yml` запускается на каждом PR 
 | --- | --- |
 | `PR policy` | Рабочие ветки направлены в `develop`; в `main` принимается только собственная `develop` |
 | `Backend` | Python 3.13, `uv sync --locked --dev`, Ruff lint и форматирование всего проекта, все тесты unittest из `tests/` |
-| `Frontend` | При наличии `frontend/`: Node.js 24, `npm ci`, `npm run lint`, TypeScript `npm run typecheck`, `npm run build` |
+| `Frontend` | Node.js по `frontend/.nvmrc`, npm из `frontend/package.json`, `npm ci`, `npm run lint`, `npm run typecheck`, `npm run build` |
 
 Обязательность этих трёх статусов и одного одобрения задаётся в настройках
 защиты **обеих** веток GitHub, вместе с запретом обхода администраторами,
@@ -56,18 +56,13 @@ force push и удаления. При изменении имён job необ�
 Зависимости фиксируются в `uv.lock`; изменение зависимостей сопровождается
 обновлением lock-файла. CI не обновляет его автоматически.
 
-## Подключение фронтенда
+## Проверки фронтенда
 
-Фронтенда сейчас нет, поэтому `Frontend` явно сообщает об этом в отчёте CI.
-При его добавлении используйте каталог `frontend/`, включите `package.json`
-и `package-lock.json` в один PR. Обязательны scripts `lint` и `build`,
-а для TypeScript также `typecheck` (например, `tsc --noEmit`).
-Наличие TypeScript определяется по зависимости `typescript`, конфигурации
-`tsconfig*.json` или исходникам `.ts`/`.tsx`/`.mts`/`.cts`.
-Пустой каталог, отсутствие lock-файла или обязательного script приводят к ошибке CI.
-Фронтенд начнёт проверяться автоматически в том же PR, в котором он добавлен.
-Команды должны завершаться с ошибкой при нарушении правил; `--if-present`
-и подавление ошибок для обязательных проверок не используются.
+Из каталога `frontend/` выполните `npm ci`, `npm run lint`,
+`npm run typecheck` и `npm run build`. CI выполняет те же команды. При
+изменении зависимостей обновляйте `package-lock.json` вместе с `package.json`.
+Инструкции по запуску и обслуживанию сборки есть в
+[README фронтенда](frontend/README.md).
 
 ## Права и секреты
 
