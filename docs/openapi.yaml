@@ -58,6 +58,10 @@ tags:
     description: Регистрация, вход, выход и обновление сессии
   - name: Users
     description: Текущий пользователь и роль
+  - name: References
+    description: Справочники корпусов и оборудования
+  - name: Rooms
+    description: Каталог, карточка, создание и публикация аудиторий
   - name: System
     description: Служебные методы
 security:
@@ -314,12 +318,396 @@ paths:
                     role: admin
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /buildings:
+    get:
+      tags: [References]
+      operationId: listBuildings
+      summary: Получить справочник корпусов
+      description: Справочник ведётся вне API. Порядок — по названию.
+      responses:
+        '200':
+          description: Корпуса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildingList'
+              examples:
+                filled:
+                  summary: Есть корпуса
+                  value:
+                    items:
+                      - id: 1b2c3d4e-0000-4000-8000-000000000001
+                        name: Корпус 1
+                      - id: 1b2c3d4e-0000-4000-8000-000000000002
+                        name: Корпус 2
+                empty:
+                  summary: Справочник пуст
+                  value:
+                    items: []
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /equipment:
+    get:
+      tags: [References]
+      operationId: listEquipment
+      summary: Получить справочник оборудования
+      description: Справочник ведётся вне API. Порядок — по названию.
+      responses:
+        '200':
+          description: Виды оборудования
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EquipmentList'
+              examples:
+                filled:
+                  summary: Есть оборудование
+                  value:
+                    items:
+                      - id: 2c3d4e5f-0000-4000-8000-000000000001
+                        name: Интерактивная доска
+                      - id: 2c3d4e5f-0000-4000-8000-000000000002
+                        name: Компьютеры
+                      - id: 2c3d4e5f-0000-4000-8000-000000000003
+                        name: Микрофон
+                      - id: 2c3d4e5f-0000-4000-8000-000000000004
+                        name: Проектор
+                empty:
+                  summary: Справочник пуст
+                  value:
+                    items: []
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /rooms:
+    get:
+      tags: [Rooms]
+      operationId: listRooms
+      summary: Получить каталог аудиторий
+      description: |
+        Пользователь получает только опубликованные аудитории. Администратор
+        получает все, включая черновики. Порядок — по названию корпуса,
+        затем по номеру.
+      responses:
+        '200':
+          description: Аудитории
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomList'
+              examples:
+                filled:
+                  summary: Каталог
+                  value:
+                    items:
+                      - id: 4e5f6a7b-0000-4000-8000-000000000405
+                        number: '405'
+                        building:
+                          id: 1b2c3d4e-0000-4000-8000-000000000001
+                          name: Корпус 1
+                        floor: 4
+                        capacity: 30
+                        equipment:
+                          - id: 2c3d4e5f-0000-4000-8000-000000000001
+                            name: Интерактивная доска
+                          - id: 2c3d4e5f-0000-4000-8000-000000000004
+                            name: Проектор
+                        description: Светлая аудитория для консультаций, семинаров и встреч небольших учебных групп.
+                        photo_url: http://127.0.0.1:4001/public/rooms/5a6b7c8d9e0f4a1b.jpg
+                        status: published
+                      - id: 4e5f6a7b-0000-4000-8000-000000000407
+                        number: '407'
+                        building:
+                          id: 1b2c3d4e-0000-4000-8000-000000000001
+                          name: Корпус 1
+                        floor: 4
+                        capacity: 50
+                        equipment:
+                          - id: 2c3d4e5f-0000-4000-8000-000000000002
+                            name: Компьютеры
+                          - id: 2c3d4e5f-0000-4000-8000-000000000004
+                            name: Проектор
+                        description: null
+                        photo_url: null
+                        status: published
+                empty:
+                  summary: Каталог пуст
+                  value:
+                    items: []
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Rooms]
+      operationId: createRoom
+      summary: Добавить аудиторию
+      description: |
+        Только для администратора. Аудитория создаётся черновиком
+        (`status: draft`) и не видна пользователям до публикации.
+        Фотография загружается отдельно методом `PUT /rooms/{room_id}/photo`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoomCreate'
+            example:
+              number: '512'
+              building_id: 1b2c3d4e-0000-4000-8000-000000000001
+              floor: 5
+              capacity: 40
+              equipment_ids:
+                - 2c3d4e5f-0000-4000-8000-000000000004
+              description: Аудитория для занятий, консультаций и командной работы.
+      responses:
+        '201':
+          description: Черновик аудитории создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Room'
+              example:
+                id: 4e5f6a7b-0000-4000-8000-000000000512
+                number: '512'
+                building:
+                  id: 1b2c3d4e-0000-4000-8000-000000000001
+                  name: Корпус 1
+                floor: 5
+                capacity: 40
+                equipment:
+                  - id: 2c3d4e5f-0000-4000-8000-000000000004
+                    name: Проектор
+                description: Аудитория для занятий, консультаций и командной работы.
+                photo_url: null
+                status: draft
+        '400':
+          description: Ошибки полей
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidFields:
+                  summary: Пустой номер и нулевая вместимость
+                  value:
+                    message: Проверьте заполнение полей
+                    status_code: 400
+                    code: validation_error
+                    errors:
+                      - field: number
+                        message: Введите номер аудитории
+                      - field: capacity
+                        message: Введите число больше 0
+                unknownReference:
+                  summary: Корпус или оборудование не из справочника
+                  value:
+                    message: Проверьте заполнение полей
+                    status_code: 400
+                    code: validation_error
+                    errors:
+                      - field: building_id
+                        message: Выберите корпус из списка
+                      - field: equipment_ids
+                        message: Выберите оборудование из списка
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/RoomNumberTaken'
+  /rooms/{room_id}:
+    parameters:
+      - $ref: '#/components/parameters/RoomId'
+    get:
+      tags: [Rooms]
+      operationId: getRoom
+      summary: Получить карточку аудитории
+      description: |
+        Пользователь получает только опубликованную аудиторию, для черновика
+        возвращается `404`. Администратор получает любую.
+      responses:
+        '200':
+          description: Аудитория
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Room'
+              examples:
+                withEquipment:
+                  $ref: '#/components/examples/Room405'
+                withoutEquipment:
+                  summary: Оборудование не указано
+                  value:
+                    id: 4e5f6a7b-0000-4000-8000-000000000210
+                    number: '210'
+                    building:
+                      id: 1b2c3d4e-0000-4000-8000-000000000001
+                      name: Корпус 1
+                    floor: 2
+                    capacity: 30
+                    equipment: []
+                    description: null
+                    photo_url: null
+                    status: published
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /rooms/{room_id}/publish:
+    parameters:
+      - $ref: '#/components/parameters/RoomId'
+    post:
+      tags: [Rooms]
+      operationId: publishRoom
+      summary: Опубликовать аудиторию
+      description: |
+        Только для администратора. Делает аудиторию видимой в каталоге.
+        Повторная публикация не считается ошибкой и возвращает ту же аудиторию.
+      responses:
+        '200':
+          description: Аудитория опубликована
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Room'
+              example:
+                id: 4e5f6a7b-0000-4000-8000-000000000512
+                number: '512'
+                building:
+                  id: 1b2c3d4e-0000-4000-8000-000000000001
+                  name: Корпус 1
+                floor: 5
+                capacity: 40
+                equipment:
+                  - id: 2c3d4e5f-0000-4000-8000-000000000004
+                    name: Проектор
+                description: Аудитория для занятий, консультаций и командной работы.
+                photo_url: http://127.0.0.1:4001/public/rooms/8f1d2c3b4a5e4f60.jpg
+                status: published
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /rooms/{room_id}/photo:
+    parameters:
+      - $ref: '#/components/parameters/RoomId'
+    put:
+      tags: [Rooms]
+      operationId: uploadRoomPhoto
+      summary: Загрузить фотографию аудитории
+      description: |
+        Только для администратора. У аудитории одна фотография, новая
+        заменяет предыдущую. Принимаются JPG и PNG размером до 10 МБ.
+        Тип определяется по содержимому файла, а не по расширению.
+        Сервер может уменьшить изображение; ссылка возвращается в `photo_url`.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RoomPhotoUpload'
+            encoding:
+              file:
+                contentType: image/jpeg, image/png
+      responses:
+        '200':
+          description: Фотография сохранена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Room'
+              example:
+                id: 4e5f6a7b-0000-4000-8000-000000000512
+                number: '512'
+                building:
+                  id: 1b2c3d4e-0000-4000-8000-000000000001
+                  name: Корпус 1
+                floor: 5
+                capacity: 40
+                equipment:
+                  - id: 2c3d4e5f-0000-4000-8000-000000000004
+                    name: Проектор
+                description: Аудитория для занятий, консультаций и командной работы.
+                photo_url: http://127.0.0.1:4001/public/rooms/8f1d2c3b4a5e4f60.jpg
+                status: draft
+        '400':
+          description: Файл не передан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Проверьте заполнение полей
+                status_code: 400
+                code: validation_error
+                errors:
+                  - field: file
+                    message: Выберите файл
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          description: Файл больше 10 МБ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Файл должен быть не больше 10 МБ
+                status_code: 413
+                code: file_too_large
+                errors:
+                  - field: file
+                    message: Файл должен быть не больше 10 МБ
+        '415':
+          description: Файл не JPG и не PNG
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Загрузите изображение JPG или PNG
+                status_code: 415
+                code: unsupported_media_type
+                errors:
+                  - field: file
+                    message: Загрузите изображение JPG или PNG
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
+  parameters:
+    RoomId:
+      name: room_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  examples:
+    Room405:
+      summary: Аудитория с оборудованием
+      value:
+        id: 4e5f6a7b-0000-4000-8000-000000000405
+        number: '405'
+        building:
+          id: 1b2c3d4e-0000-4000-8000-000000000001
+          name: Корпус 1
+        floor: 4
+        capacity: 30
+        equipment:
+          - id: 2c3d4e5f-0000-4000-8000-000000000001
+            name: Интерактивная доска
+          - id: 2c3d4e5f-0000-4000-8000-000000000004
+            name: Проектор
+        description: Светлая аудитория для консультаций, семинаров и встреч небольших учебных групп.
+        photo_url: http://127.0.0.1:4001/public/rooms/5a6b7c8d9e0f4a1b.jpg
+        status: published
   schemas:
     Health:
       type: object
@@ -413,6 +801,129 @@ components:
         token:
           type: string
           description: Новый access-токен.
+    Building:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: Название для показа, например «Корпус 1».
+    BuildingList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Building'
+    Equipment:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+    EquipmentList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Equipment'
+    RoomStatus:
+      type: string
+      enum: [draft, published]
+      description: |
+        `draft` — черновик, виден только администратору.
+        `published` — опубликована, видна в каталоге.
+    RoomNumber:
+      type: string
+      minLength: 1
+      maxLength: 20
+      description: Номер аудитории, уникален в пределах корпуса без учёта регистра.
+    Room:
+      type: object
+      required: [id, number, building, floor, capacity, equipment, description, photo_url, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        number:
+          $ref: '#/components/schemas/RoomNumber'
+        building:
+          $ref: '#/components/schemas/Building'
+        floor:
+          type: integer
+        capacity:
+          type: integer
+          minimum: 1
+          description: Количество мест.
+        equipment:
+          type: array
+          description: Пустой список означает, что оборудование не указано.
+          items:
+            $ref: '#/components/schemas/Equipment'
+        description:
+          type: [string, 'null']
+          maxLength: 1000
+        photo_url:
+          type: [string, 'null']
+          format: uri
+          description: Абсолютная ссылка на фотографию или `null`, если её нет.
+        status:
+          $ref: '#/components/schemas/RoomStatus'
+    RoomList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Room'
+    RoomCreate:
+      type: object
+      required: [number, building_id, floor, capacity]
+      additionalProperties: false
+      properties:
+        number:
+          $ref: '#/components/schemas/RoomNumber'
+        building_id:
+          type: string
+          format: uuid
+          description: Корпус из `GET /buildings`.
+        floor:
+          type: integer
+          minimum: -5
+          maximum: 50
+        capacity:
+          type: integer
+          minimum: 1
+          maximum: 1000
+        equipment_ids:
+          type: array
+          uniqueItems: true
+          default: []
+          description: Оборудование из `GET /equipment`.
+          items:
+            type: string
+            format: uuid
+        description:
+          type: [string, 'null']
+          maxLength: 1000
+    RoomPhotoUpload:
+      type: object
+      required: [file]
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          description: Изображение JPG или PNG до 10 МБ.
     FieldError:
       type: object
       required: [field, message]
@@ -438,7 +949,8 @@ components:
           description: |
             Машиночитаемый код ошибки: `validation_error`, `not_authenticated`,
             `invalid_token`, `token_expired`, `invalid_credentials`,
-            `invalid_refresh_token`, `forbidden`, `not_found`, `login_taken`.
+            `invalid_refresh_token`, `forbidden`, `not_found`, `login_taken`,
+            `room_number_taken`, `file_too_large`, `unsupported_media_type`.
         errors:
           type: array
           description: Ошибки отдельных полей. Есть только у `validation_error` и ошибок дублей.
@@ -503,3 +1015,16 @@ components:
             message: Не найдено
             status_code: 404
             code: not_found
+    RoomNumberTaken:
+      description: Аудитория с таким номером уже есть в выбранном корпусе
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            message: Такой номер уже есть в корпусе
+            status_code: 409
+            code: room_number_taken
+            errors:
+              - field: number
+                message: Такой номер уже есть в корпусе
