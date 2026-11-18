@@ -15,3 +15,13 @@ log/
 
 # Creds
 config/prod
+
+# Local environment and tool caches
+.env
+.env.*
+!.env.example
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+node_modules/
