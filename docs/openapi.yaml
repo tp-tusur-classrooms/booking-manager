@@ -1,0 +1,505 @@
+openapi: 3.1.0
+info:
+  title: Бронирование аудиторий ТУСУР
+  version: 0.1.0
+  description: |
+    Статический контракт API первого спринта. Описывает поведение, на которое
+    опираются фронтенд и бэкенд при параллельной разработке.
+
+    ## Авторизация
+
+    Защищённые методы принимают access-токен в заголовке
+    `Authorization: Bearer <token>`. Access-токен действует 30 минут,
+    refresh-токен — 30 дней. Оба выдаются при регистрации и входе.
+
+    Роль пользователя (`user` или `admin`) возвращается методом `GET /profile`
+    и в ответах регистрации и входа. При регистрации роль не передаётся:
+    новый пользователь всегда получает роль `user`. Администраторы назначаются
+    вне API.
+
+    Отсутствие или недействительность токена — `401`. Недостаточно прав — `403`.
+
+    ## Истечение сессии
+
+    Когда access-токен истёк, защищённый метод отвечает `401` с кодом
+    `token_expired`. Клиент один раз вызывает `POST /auth/refresh` и повторяет
+    исходный запрос с новым токеном. Если refresh тоже отвечает `401`, клиент
+    удаляет токены и переходит на экран входа. Методы `/auth/refresh` и
+    `/auth/logout` не требуют access-токен, поэтому цикла перенаправлений нет.
+
+    ## Выход
+
+    `POST /auth/logout` отзывает переданный refresh-токен и всегда отвечает
+    `204`. Клиент удаляет оба токена. Access-токен не отзывается сервером
+    и перестаёт действовать по истечении срока.
+
+    ## Даты и время
+
+    Все даты и время относятся к часовому поясу `Asia/Tomsk` (UTC+7, без
+    перехода на летнее время).
+
+    - Календарная дата — строка `YYYY-MM-DD`, например `2026-10-22`.
+    - Время начала и окончания учебного периода — строка `HH:MM`, например `13:15`.
+    - Момент времени — RFC 3339 со смещением, например `2026-10-22T13:15:00+07:00`.
+
+    ## Ошибки
+
+    Все ошибки возвращаются в одном формате `Error`. Поле `code` предназначено
+    для программной обработки, `message` — для показа пользователю. Ошибки
+    отдельных полей перечисляются в `errors` с кодом `validation_error`
+    и статусом `400`.
+servers:
+  - url: /api/v1
+    description: Тот же origin, что и фронтенд
+  - url: http://127.0.0.1:4001/api/v1
+    description: Локальный FastAPI
+tags:
+  - name: Auth
+    description: Регистрация, вход, выход и обновление сессии
+  - name: Users
+    description: Текущий пользователь и роль
+  - name: System
+    description: Служебные методы
+security:
+  - bearerAuth: []
+paths:
+  /health:
+    get:
+      tags: [System]
+      operationId: getHealth
+      summary: Проверить доступность API
+      security: []
+      responses:
+        '200':
+          description: API работает
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+              example:
+                status: ok
+  /auth/register:
+    post:
+      tags: [Auth]
+      operationId: register
+      summary: Зарегистрироваться
+      description: |
+        Создаёт пользователя с ролью `user` и сразу выполняет вход.
+        Логин сравнивается без учёта регистра и сохраняется в нижнем регистре.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            example:
+              name: Иван Иванов
+              login: ivanov
+              password: Secret-123
+              confirm_password: Secret-123
+      responses:
+        '201':
+          description: Пользователь создан, сессия открыта
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignedUser'
+              example:
+                user:
+                  id: 3f6c2a1e-5b7d-4c8e-9f10-2a3b4c5d6e7f
+                  name: Иван Иванов
+                  login: ivanov
+                  role: user
+                token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.access
+                refresh_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.refresh
+        '400':
+          description: Ошибки полей
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                emptyFields:
+                  summary: Пустые поля
+                  value:
+                    message: Проверьте заполнение полей
+                    status_code: 400
+                    code: validation_error
+                    errors:
+                      - field: name
+                        message: Введите имя
+                      - field: login
+                        message: Введите логин
+                      - field: password
+                        message: Введите пароль
+                passwordsMismatch:
+                  summary: Пароли не совпадают
+                  value:
+                    message: Проверьте заполнение полей
+                    status_code: 400
+                    code: validation_error
+                    errors:
+                      - field: confirm_password
+                        message: Пароли должны совпадать
+        '409':
+          description: Логин уже занят
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Такой логин уже занят
+                status_code: 409
+                code: login_taken
+                errors:
+                  - field: login
+                    message: Такой логин уже занят
+  /auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      summary: Войти
+      description: |
+        Проверяет логин и пароль. При неверной паре не сообщает, какое
+        из значений ошибочно.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              login: ivanov
+              password: Secret-123
+      responses:
+        '200':
+          description: Сессия открыта
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignedUser'
+              examples:
+                user:
+                  summary: Пользователь
+                  value:
+                    user:
+                      id: 3f6c2a1e-5b7d-4c8e-9f10-2a3b4c5d6e7f
+                      name: Иван Иванов
+                      login: ivanov
+                      role: user
+                    token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.access
+                    refresh_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.refresh
+                admin:
+                  summary: Администратор
+                  value:
+                    user:
+                      id: 9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d
+                      name: Пётр Петров
+                      login: admin
+                      role: admin
+                    token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.access
+                    refresh_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.refresh
+        '400':
+          description: Не заполнены поля
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Проверьте заполнение полей
+                status_code: 400
+                code: validation_error
+                errors:
+                  - field: password
+                    message: Введите пароль
+        '401':
+          description: Неверный логин или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Не удалось войти. Проверьте логин и пароль.
+                status_code: 401
+                code: invalid_credentials
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      operationId: refreshToken
+      summary: Обновить access-токен
+      description: |
+        Выдаёт новый access-токен по действующему refresh-токену.
+        Access-токен не требуется.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+            example:
+              refresh_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.refresh
+      responses:
+        '200':
+          description: Новый access-токен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefreshedToken'
+              example:
+                token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.access
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: Refresh-токен истёк, отозван или недействителен. Клиент завершает сессию.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Сессия истекла. Войдите снова.
+                status_code: 401
+                code: invalid_refresh_token
+  /auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      summary: Выйти
+      description: |
+        Отзывает refresh-токен. Отвечает `204` и для уже отозванного
+        или истёкшего токена. Access-токен не требуется.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+            example:
+              refresh_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.refresh
+      responses:
+        '204':
+          description: Сессия завершена
+        '400':
+          $ref: '#/components/responses/ValidationError'
+  /profile:
+    get:
+      tags: [Users]
+      operationId: getProfile
+      summary: Получить текущего пользователя
+      description: Возвращает имя для шапки и роль для выбора навигации.
+      responses:
+        '200':
+          description: Текущий пользователь
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+              examples:
+                user:
+                  summary: Пользователь
+                  value:
+                    id: 3f6c2a1e-5b7d-4c8e-9f10-2a3b4c5d6e7f
+                    name: Иван Иванов
+                    login: ivanov
+                    role: user
+                admin:
+                  summary: Администратор
+                  value:
+                    id: 9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d
+                    name: Пётр Петров
+                    login: admin
+                    role: admin
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          const: ok
+    Role:
+      type: string
+      enum: [user, admin]
+      description: Роль пользователя. Назначается только сервером.
+    Name:
+      type: string
+      minLength: 1
+      maxLength: 50
+      pattern: '^[A-Za-zА-ЯЁа-яё\- ]+$'
+      description: Имя для отображения. Буквы, пробел и дефис.
+    Login:
+      type: string
+      minLength: 3
+      maxLength: 32
+      pattern: '^[A-Za-z0-9._-]+$'
+      description: Уникальный логин. Сравнивается без учёта регистра.
+    Password:
+      type: string
+      minLength: 8
+      maxLength: 16
+      pattern: '^[A-Za-z0-9!#$%&*+\-.<=>?@^_]+$'
+      description: Латинские буквы, цифры и символы `!#$%&*+-.<=>?@^_`.
+    User:
+      type: object
+      required: [id, name, login, role]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          $ref: '#/components/schemas/Name'
+        login:
+          $ref: '#/components/schemas/Login'
+        role:
+          $ref: '#/components/schemas/Role'
+    RegisterRequest:
+      type: object
+      required: [name, login, password, confirm_password]
+      additionalProperties: false
+      properties:
+        name:
+          $ref: '#/components/schemas/Name'
+        login:
+          $ref: '#/components/schemas/Login'
+        password:
+          $ref: '#/components/schemas/Password'
+        confirm_password:
+          type: string
+          description: Должен совпадать с `password`.
+    LoginRequest:
+      type: object
+      required: [login, password]
+      properties:
+        login:
+          type: string
+          minLength: 1
+        password:
+          type: string
+          minLength: 1
+    SignedUser:
+      type: object
+      required: [user, token, refresh_token]
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        token:
+          type: string
+          description: Access-токен, действует 30 минут.
+        refresh_token:
+          type: string
+          description: Refresh-токен, действует 30 дней.
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+          minLength: 1
+    RefreshedToken:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          description: Новый access-токен.
+    FieldError:
+      type: object
+      required: [field, message]
+      properties:
+        field:
+          type: string
+          description: Имя поля запроса.
+        message:
+          type: string
+          description: Сообщение для показа рядом с полем.
+    Error:
+      type: object
+      required: [message, status_code, code]
+      properties:
+        message:
+          type: string
+          description: Сообщение для пользователя.
+        status_code:
+          type: integer
+          description: Дублирует HTTP-статус.
+        code:
+          type: string
+          description: |
+            Машиночитаемый код ошибки: `validation_error`, `not_authenticated`,
+            `invalid_token`, `token_expired`, `invalid_credentials`,
+            `invalid_refresh_token`, `forbidden`, `not_found`, `login_taken`.
+        errors:
+          type: array
+          description: Ошибки отдельных полей. Есть только у `validation_error` и ошибок дублей.
+          items:
+            $ref: '#/components/schemas/FieldError'
+  responses:
+    ValidationError:
+      description: Ошибки полей
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            message: Проверьте заполнение полей
+            status_code: 400
+            code: validation_error
+            errors:
+              - field: refresh_token
+                message: Обязательное поле
+    Unauthorized:
+      description: Нет действующего access-токена
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            notAuthenticated:
+              summary: Токен не передан
+              value:
+                message: Требуется вход в систему
+                status_code: 401
+                code: not_authenticated
+            tokenExpired:
+              summary: Токен истёк
+              value:
+                message: Сессия истекла
+                status_code: 401
+                code: token_expired
+            invalidToken:
+              summary: Токен недействителен
+              value:
+                message: Ошибка авторизации
+                status_code: 401
+                code: invalid_token
+    Forbidden:
+      description: Недостаточно прав
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            message: Нет доступа
+            status_code: 403
+            code: forbidden
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            message: Не найдено
+            status_code: 404
+            code: not_found
