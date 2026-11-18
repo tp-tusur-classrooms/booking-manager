@@ -7,9 +7,9 @@ import './styles.css';
 
 function App() {
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-950">
+    <div className="min-h-screen bg-[#f7f7f9] text-[#242529]">
       <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-between gap-x-8 gap-y-3 px-5 py-4">
+        <div className="mx-auto flex min-h-[87px] max-w-[1440px] flex-wrap items-center justify-between gap-x-8 gap-y-3 px-5 lg:px-16">
           <Link to="/" className="font-semibold">
             Бронирование аудиторий ТУСУР
           </Link>
@@ -23,10 +23,10 @@ function App() {
           </nav>
         </div>
       </header>
-      <main className="mx-auto max-w-4xl px-5 py-12">
+      <main className="mx-auto max-w-[1440px] px-5 py-10 lg:px-16">
         <Routes>
           <Route index element={<UserPage />} />
-          <Route path="admin" element={<AdminPage />} />
+          <Route path="admin/*" element={<AdminPage />} />
           <Route
             path="*"
             element={
