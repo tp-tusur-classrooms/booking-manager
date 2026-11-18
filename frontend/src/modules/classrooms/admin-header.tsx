@@ -24,7 +24,7 @@ export function AdminHeader({ profile }: { profile?: AdminProfile }) {
           Аудитории
         </Link>
         <nav aria-label="Разделы администратора" className="flex">
-          <NavLink to="/admin" className="relative flex min-h-12 items-center text-sm after:absolute after:inset-x-0 after:bottom-0 after:h-[3px] after:bg-[#6952b3]">
+          <NavLink to="/admin" className="relative flex min-h-12 items-center text-sm aria-[current=page]:font-bold after:absolute after:inset-x-0 after:bottom-0 after:h-[3px] after:bg-[#6952b3]">
             Управление
           </NavLink>
         </nav>
