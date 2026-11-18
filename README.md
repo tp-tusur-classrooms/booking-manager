@@ -1,7 +1,7 @@
 # Управление бронированием аудиторий
 
 Сервис бронирования аудиторий ТУСУР. Бэкенд: Python 3.13, FastAPI,
-SQLAlchemy и PostgreSQL. Фронтенд пока не добавлен.
+SQLAlchemy и PostgreSQL. Фронтенд: React, TypeScript, Vite и Tailwind CSS.
 
 ## Структура репозитория
 
@@ -15,7 +15,7 @@ config/example/        Примеры настроек без рабочих с�
 scripts/               Подготовка локального окружения и проверка PR
 tests/                 Автоматические тесты бэкенда и правил PR
 .github/               CI и шаблон pull request
-frontend/              Место будущего фронтенда (ещё не создано)
+frontend/              Пользовательские и административные страницы
 pyproject.toml, uv.lock Зависимости и их зафиксированные версии
 docker-compose.yml     Локальный PostgreSQL
 ```
@@ -41,6 +41,11 @@ uv run --frozen uvicorn main:create_app --factory --reload
 Учётные данные из Compose предназначены только для локальной разработки.
 Для рабочего окружения задайте собственные секреты вне Git.
 
+Для запуска фронтенда установите закреплённые версии Node.js и npm. Из
+каталога `frontend/` запустите `npm ci` и `npm run dev`, затем откройте
+<http://localhost:5000>. Настройки связи с API и запуск production-сборки
+описаны в [README фронтенда](frontend/README.md).
+
 ## Проверки
 
 ```sh
@@ -51,5 +56,5 @@ uv run --frozen python -m unittest discover -s tests -v
 ```
 
 Тесты не требуют PostgreSQL, SMTP или рабочих секретов.
-Ветки, правила слияния, CI и требования к будущему фронтенду описаны в
+Ветки, правила слияния и CI описаны в
 [CONTRIBUTING.md](CONTRIBUTING.md).
