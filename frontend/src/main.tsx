@@ -25,7 +25,7 @@ function App() {
             <Route index element={<UserPage />} />
           </Route>
           <Route element={<RequireRole role="admin" />}>
-            <Route path="admin" element={<AdminPage />} />
+            <Route path="admin/*" element={<AdminPage />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Route>

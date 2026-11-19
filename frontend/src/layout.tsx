@@ -1,5 +1,6 @@
 import { Link, Navigate, NavLink, Outlet, useLocation } from 'react-router';
 import logo from './assets/logo.svg';
+import bell from './assets/notifications.svg';
 import { homeByRole, useSession, type Role } from './session';
 
 const navByRole: Record<Role, { to: string; label: string }[]> = {
@@ -64,7 +65,7 @@ function Header() {
             <NavLink
               key={item.to}
               to={item.to}
-              end
+              end={item.to === '/'}
               className="relative flex items-center text-sm text-black outline-accent focus-visible:outline-2 aria-[current=page]:font-bold"
             >
               {({ isActive }) => (
@@ -77,6 +78,11 @@ function Header() {
           ))}
         </nav>
         <div className="ml-auto flex items-center">
+          {user.role === 'admin' && (
+            <span className="mr-4 hidden border-r border-nav-line pr-4 sm:block">
+              <img src={bell} alt="Уведомления" />
+            </span>
+          )}
           <span
             aria-hidden="true"
             className="flex size-10 shrink-0 items-center justify-center rounded-full bg-avatar text-[13px] font-bold text-black"
