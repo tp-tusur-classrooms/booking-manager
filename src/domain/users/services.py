@@ -166,16 +166,14 @@ class UserService(BaseService):
     # Пользовательские сценарии
     async def register(
         self: Self, create_user: user_schemas.RegisterUserRequest
-    ) -> user_schemas.SignedUserResponce:
+    ) -> user_schemas.User:
         create_user.validate_req()
         async with self.uow:
             create_data = create_user.to_create_user()
             create_data.password = self.hasher_service.get_password_hash(
                 create_data.password
             )
-            new_user = await self.create(create_data)
-
-            return self._to_signed_user_responce(new_user)
+            return await self.create(create_data)
 
     async def login(
         self: Self, data: user_schemas.LoginUserRequest

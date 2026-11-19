@@ -13,7 +13,8 @@ info:
     refresh-токен действует 30 дней. Оба выдаются при входе.
 
     Роль пользователя (`user` или `admin`) возвращается методом `GET /profile`
-    и в ответе входа. Учётные записи создаются и роли назначаются вне API.
+    и в ответе входа. Администратор создаётся через CLI, пользователи
+    создаются администратором через `POST /users` только с ролью `user`.
     Публичной регистрации и операций с почтой нет.
 
     Отсутствие или недействительность токена — `401`. Недостаточно прав — `403`.
@@ -74,7 +75,7 @@ tags:
   - name: Auth
     description: Вход, выход и обновление сессии
   - name: Users
-    description: Текущий пользователь и роль
+    description: Текущий пользователь, роль и создание пользователей администратором
   - name: References
     description: Справочники корпусов и оборудования
   - name: Rooms
@@ -230,6 +231,58 @@ paths:
           description: Сессия завершена
         '400':
           $ref: '#/components/responses/ValidationError'
+  /users:
+    post:
+      tags: [Users]
+      operationId: createUser
+      summary: Создать пользователя
+      description: |
+        Только для администратора. Создаёт аккаунт с ролью `user`.
+        Дополнительные поля, включая `role` и `is_admin`, игнорируются.
+        Логин сохраняется в нижнем регистре. Пароль хешируется.
+        Токены не выдаются, сессия администратора не меняется.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+            example:
+              name: Иван Иванов
+              login: ivanov
+              password: Secret-123
+              confirm_password: Secret-123
+      responses:
+        '201':
+          description: Пользователь создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+              example:
+                id: 3f6c2a1e-5b7d-4c8e-9f10-2a3b4c5d6e7f
+                name: Иван Иванов
+                login: ivanov
+                role: user
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Логин уже занят
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Такой логин уже занят
+                status_code: 409
+                code: login_taken
+                errors:
+                  - field: login
+                    message: Такой логин уже занят
   /profile:
     get:
       tags: [Users]
@@ -1092,6 +1145,23 @@ components:
           $ref: '#/components/schemas/Login'
         role:
           $ref: '#/components/schemas/Role'
+    CreateUserRequest:
+      type: object
+      required: [name, login, password, confirm_password]
+      additionalProperties: true
+      properties:
+        name:
+          $ref: '#/components/schemas/Name'
+        login:
+          $ref: '#/components/schemas/Login'
+        password:
+          type: string
+          minLength: 8
+          maxLength: 16
+          pattern: '^[A-Za-z0-9!#$%&*+\-.<=>?@^_]+$'
+        confirm_password:
+          type: string
+          description: Должен совпадать с password.
     LoginRequest:
       type: object
       required: [login, password]
@@ -1452,7 +1522,7 @@ components:
           description: |
             Машиночитаемый код ошибки: `validation_error`, `not_authenticated`,
             `invalid_token`, `token_expired`, `invalid_credentials`,
-            `invalid_refresh_token`, `forbidden`, `not_found`,
+            `invalid_refresh_token`, `forbidden`, `not_found`, `login_taken`,
             `room_number_taken`, `file_too_large`, `unsupported_media_type`,
             `lesson_conflict`.
         errors:
