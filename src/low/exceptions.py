@@ -233,13 +233,6 @@ class UnauthorizatedException(UserException):
         super().__init__(message=message, status_code=401, code=code)
 
 
-class EmailUnverifiedException(UserException):
-    """Email пользователя не подтверждён"""
-
-    def __init__(self) -> None:
-        super().__init__(message="Email не подтверждён", status_code=403)
-
-
 class FileNotFoundException(UserException):
     """Файл не найден"""
 

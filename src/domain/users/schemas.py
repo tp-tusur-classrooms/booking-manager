@@ -1,9 +1,8 @@
 from typing import Annotated, Literal, Self
 import uuid
 
-from pydantic import AfterValidator, BaseModel, EmailStr, Field, field_validator
+from pydantic import AfterValidator, BaseModel, Field, field_validator
 
-from src.domain.base.joiner import WithSchema
 from src.low.exceptions import (
     FieldError,
     UserException,
@@ -31,41 +30,28 @@ LoginField = Annotated[
 class CreateUser(BaseModel):
     login: LoginField
     role: Role = "user"
-    email: str | None = None
     password: str
     name: str
-    avatar_id: uuid.UUID | None = None
 
 
 class UpdateUser(BaseModel):
-    email: str | None = None
     password: str | None = None
     name: str | None = None
-    avatar_id: uuid.UUID | None = None
-    is_email_verified: bool | None = None
 
 
 class FilterUser(BaseModel):
     id: list[uuid.UUID] | None = None
-    email: str | None = None
     login: str | None = None
     name: str | None = None
-
-
-class UserWith(WithSchema):
-    avatar: bool = False
 
 
 # Основные схемы
 class FullUser(BaseModel):
     id: uuid.UUID
     password: str
-    email: EmailStr | None = None
     login: str
     role: Role
     name: str
-    avatar_url: str | None = None
-    is_email_verified: bool = False
 
 
 class User(BaseModel):
@@ -73,8 +59,6 @@ class User(BaseModel):
     login: str
     role: Role
     name: str
-    email: EmailStr | None = None
-    avatar_url: str | None = None
 
 
 class SignedUser(BaseModel):
@@ -86,7 +70,7 @@ class SignedUser(BaseModel):
 class PreviewUser(BaseModel):
     id: uuid.UUID
     name: str | None = None
-    email: str
+    login: str
 
 
 # Запросы и ответы API

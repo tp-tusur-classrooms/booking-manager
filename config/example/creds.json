@@ -6,9 +6,6 @@
     },
     "token": {
       "secret_key": "replace-with-a-random-secret-before-deployment"
-    },
-    "mailer": {
-      "password": "!email_password"
     }
   }
 }

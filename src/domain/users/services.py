@@ -2,12 +2,8 @@ from datetime import UTC, datetime
 from typing import Self
 import uuid
 
-from fastapi import UploadFile
-
 from src.domain.base.base_service import BaseService
 from src.domain.common import models
-import src.domain.file.schemas as file_schemas
-from src.domain.file.services import AvatarFileService
 from src.domain.security.services import HasherService, TokenService
 from src.domain.token.repositories import TokenRepository
 from src.domain.users.repositories import UserRepository
@@ -35,7 +31,6 @@ class UserService(BaseService):
         user_repository: UserRepository,
         hasher_service: HasherService,
         token_service: TokenService,
-        avatar_file_service: AvatarFileService,
         token_repository: TokenRepository,
     ) -> None:
         self.uow = uow
@@ -43,39 +38,13 @@ class UserService(BaseService):
         self.hasher_service = hasher_service
         self.token_service = token_service
         self.token_repository = token_repository
-        self.avatar_file_service = avatar_file_service
 
     # Вспомогательные методы и преобразования
-    def _with(self: Self) -> user_schemas.UserWith:
-        return user_schemas.UserWith(avatar=True)
+    def _to_business(self: Self, model: models.User) -> user_schemas.User:
+        return user_schemas.User.model_validate(model, from_attributes=True)
 
-    async def _to_business(self: Self, model: models.User) -> user_schemas.User:
-        public_user = user_schemas.User.model_validate(model, from_attributes=True)
-
-        if model.avatar_id:
-            avatar = file_schemas.FileMetadata.model_validate(
-                model.avatar, from_attributes=True
-            )
-            public_user.avatar_url = await self.avatar_file_service.get_file_path(
-                model.id, avatar.id
-            )
-
-        return public_user
-
-    async def _to_business_full(
-        self: Self, model: models.User
-    ) -> user_schemas.FullUser:
-        public_user = user_schemas.FullUser.model_validate(model, from_attributes=True)
-
-        if model.avatar_id:
-            avatar = file_schemas.FileMetadata.model_validate(
-                model.avatar, from_attributes=True
-            )
-            public_user.avatar_url = await self.avatar_file_service.get_file_path(
-                model.id, avatar.id
-            )
-
-        return public_user
+    def _to_business_full(self: Self, model: models.User) -> user_schemas.FullUser:
+        return user_schemas.FullUser.model_validate(model, from_attributes=True)
 
     def _to_signed_user_responce(
         self: Self, user: user_schemas.User
@@ -90,21 +59,8 @@ class UserService(BaseService):
     # Операции с пользователями
     # Получение пользователя
     async def get_by_id(self: Self, user_id: uuid.UUID) -> user_schemas.User:
-        user = await self.user_repository.get(id=user_id, with_schema=self._with())
-
-        return await self._to_business(user)
-
-    async def get_by_email(self: Self, email: str) -> user_schemas.User:
-        filters = user_schemas.FilterUser(email=email)
-        first = await self.user_repository.get_first(filters, with_schema=self._with())
-
-        return await self._to_business(first)
-
-    async def get_by_email_or_none(self: Self, email: str) -> user_schemas.User | None:
-        try:
-            return await self.get_by_email(email)
-        except NotFoundException:
-            return None
+        user = await self.user_repository.get(id=user_id)
+        return self._to_business(user)
 
     async def get_by_token(self: Self, token: str) -> user_schemas.User:
         try:
@@ -116,22 +72,11 @@ class UserService(BaseService):
     # Получение полных данных пользователя
     async def get_full_by_id(self: Self, id: uuid.UUID) -> user_schemas.FullUser:
         try:
-            first = await self.user_repository.get(id, with_schema=self._with())
+            first = await self.user_repository.get(id)
         except NotFoundException as e:
             raise UserException("Пользователя не существует") from e
 
-        return await self._to_business_full(first)
-
-    async def get_full_by_email(self: Self, email: str) -> user_schemas.FullUser:
-        filters = user_schemas.FilterUser(email=email)
-        try:
-            first = await self.user_repository.get_first(
-                filters, with_schema=self._with()
-            )
-        except NotFoundException as e:
-            raise UserException("Пользователя не существует") from e
-
-        return await self._to_business_full(first)
+        return self._to_business_full(first)
 
     # Создание пользователя
     async def create(
@@ -147,7 +92,7 @@ class UserService(BaseService):
                 errors=[FieldError(field="login", message="Такой логин уже занят")],
             ) from e
 
-        return await self._to_business(new_raw_user)
+        return self._to_business(new_raw_user)
 
     async def update(
         self: Self, user_id: uuid.UUID, update_data: user_schemas.UpdateUser
@@ -180,7 +125,7 @@ class UserService(BaseService):
     ) -> user_schemas.SignedUserResponce:
         try:
             model = await self.user_repository.get_first(
-                user_schemas.FilterUser(login=data.login), with_schema=self._with()
+                user_schemas.FilterUser(login=data.login)
             )
         except NotFoundException:
             model = None
@@ -192,7 +137,7 @@ class UserService(BaseService):
                 "Не удалось войти. Проверьте логин и пароль.", "invalid_credentials"
             )
 
-        user = await self._to_business(model)
+        user = self._to_business(model)
 
         return self._to_signed_user_responce(user)
 
@@ -228,21 +173,11 @@ class UserService(BaseService):
         self: Self,
         user_id: uuid.UUID,
         update_data: user_schemas.UpdateUserRequest,
-        avatar: UploadFile | None,
-        clear_avatar: bool,
     ) -> None:
+        if not update_data.model_fields_set:
+            return
         async with self.uow:
-            extras: dict[str, object] = {}
-            if clear_avatar:
-                extras["avatar_id"] = None
-            elif avatar is not None and avatar.filename:
-                saved = await self.avatar_file_service.save(user_id, avatar)
-                extras["avatar_id"] = saved.id
-
-            if not extras and not update_data.model_fields_set:
-                return
-
-            await self.update(user_id, update_data.to_update_user(**extras))
+            await self.update(user_id, update_data.to_update_user())
 
     async def update_password(
         self: Self, user_id: uuid.UUID, update_data: user_schemas.UpdatePasswordRequest

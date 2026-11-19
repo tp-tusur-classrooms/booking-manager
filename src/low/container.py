@@ -3,7 +3,7 @@ from dependency_injector.providers import Object
 
 from src.domain.common import models
 from src.domain.file.repositories import FileMetadataRepository, FileRepository
-from src.domain.file.services import AvatarFileService
+from src.domain.file.services import ImageFileService
 from src.domain.security.services import HasherService, TokenService
 from src.domain.token.repositories import TokenRepository
 from src.domain.users.repositories import UserRepository
@@ -55,7 +55,6 @@ class Container(containers.DeclarativeContainer):
 
     token_repository = providers.Factory(
         TokenRepository,
-        model=models.VerificationToken,
         session=session,
     )
 
@@ -70,12 +69,12 @@ class Container(containers.DeclarativeContainer):
     )
 
     # СЛОЙ 3: Сервисы домена
-    avatar_file_service = providers.Factory(
-        AvatarFileService,
+    image_file_service = providers.Factory(
+        ImageFileService,
         public_url=config.provided.files.public_url,
         file_metadata_repository=file_metadata_repository,
         file_repository=file_repository,
-        sub_folder="avatar",
+        sub_folder="images",
     )
 
     user_service = providers.Factory(
@@ -84,7 +83,6 @@ class Container(containers.DeclarativeContainer):
         user_repository=user_repository,
         hasher_service=hasher_service,
         token_service=token_service,
-        avatar_file_service=avatar_file_service,
         token_repository=token_repository,
     )
 
