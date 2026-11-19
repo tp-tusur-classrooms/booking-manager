@@ -1,6 +1,6 @@
 import { isAxiosError } from 'axios';
 import { api } from '../../api';
-import { session, type Classroom, type Reference } from './api';
+import { type Classroom, type Reference } from './api';
 
 type ClassroomInput = {
   number: string;
@@ -12,7 +12,7 @@ type ClassroomInput = {
 };
 
 export async function getClassroomOptions(signal: AbortSignal) {
-  const config = { signal, ...session() };
+  const config = { signal };
   const [buildings, equipment] = await Promise.all([
     api.get<{ items: Reference[] }>('/buildings', config),
     api.get<{ items: Reference[] }>('/equipment', config),
@@ -24,7 +24,7 @@ export async function getClassroomOptions(signal: AbortSignal) {
 }
 
 export async function createClassroom(input: ClassroomInput) {
-  const { data } = await api.post<Classroom>('/rooms', input, session());
+  const { data } = await api.post<Classroom>('/rooms', input);
   if (!data?.id) throw new Error('Некорректный ответ при создании аудитории');
   return data.id;
 }
@@ -32,11 +32,11 @@ export async function createClassroom(input: ClassroomInput) {
 export async function uploadClassroomPhoto(id: string, photo: File) {
   const body = new FormData();
   body.set('file', photo);
-  await api.put(`/rooms/${encodeURIComponent(id)}/photo`, body, { ...session(), timeout: 30000 });
+  await api.put(`/rooms/${encodeURIComponent(id)}/photo`, body, { timeout: 30000 });
 }
 
 export async function publishClassroom(id: string) {
-  const { data } = await api.post<Classroom>(`/rooms/${encodeURIComponent(id)}/publish`, undefined, session());
+  const { data } = await api.post<Classroom>(`/rooms/${encodeURIComponent(id)}/publish`);
   if (data?.status !== 'published') throw new Error('Аудитория не опубликована');
 }
 
