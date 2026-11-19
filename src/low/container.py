@@ -2,14 +2,10 @@ from dependency_injector import containers, providers
 from dependency_injector.providers import Object
 
 from src.domain.common import models
-from src.domain.email_change.services import EmailChangeService
-from src.domain.email_verification.services import EmailVerificationService
 from src.domain.file.repositories import FileMetadataRepository, FileRepository
-from src.domain.file.services import AvatarFileService
-from src.domain.password_reset.services import PasswordResetService
-from src.domain.security.services import EmailSenderService, HasherService, TokenService
+from src.domain.file.services import ImageFileService
+from src.domain.security.services import HasherService, TokenService
 from src.domain.token.repositories import TokenRepository
-from src.domain.token.services import VerificationTokenService
 from src.domain.users.repositories import UserRepository
 from src.domain.users.services import UserService
 from src.low.config.modules import ModulesConfig
@@ -50,12 +46,6 @@ class Container(containers.DeclarativeContainer):
         refresh_token_expire_days=config.provided.token.refresh_token_expire_days,
     )
 
-    email_sender_service = providers.Singleton(
-        EmailSenderService,
-        mailer_config=config.provided.mailer,
-        email_password=creds.provided.mailer.password,
-    )
-
     # СЛОЙ 2: Репозитории
     user_repository = providers.Factory(
         UserRepository,
@@ -65,7 +55,6 @@ class Container(containers.DeclarativeContainer):
 
     token_repository = providers.Factory(
         TokenRepository,
-        model=models.VerificationToken,
         session=session,
     )
 
@@ -80,24 +69,12 @@ class Container(containers.DeclarativeContainer):
     )
 
     # СЛОЙ 3: Сервисы домена
-    avatar_file_service = providers.Factory(
-        AvatarFileService,
+    image_file_service = providers.Factory(
+        ImageFileService,
         public_url=config.provided.files.public_url,
         file_metadata_repository=file_metadata_repository,
         file_repository=file_repository,
-        sub_folder="avatar",
-    )
-
-    verification_token_service = providers.Factory(
-        VerificationTokenService,
-        token_repository=token_repository,
-        token_config=config.provided.verification_token,
-    )
-
-    email_verification_service = providers.Factory(
-        EmailVerificationService,
-        token_service=verification_token_service,
-        email_sender_service=email_sender_service,
+        sub_folder="images",
     )
 
     user_service = providers.Factory(
@@ -106,24 +83,7 @@ class Container(containers.DeclarativeContainer):
         user_repository=user_repository,
         hasher_service=hasher_service,
         token_service=token_service,
-        avatar_file_service=avatar_file_service,
-        email_verification_service=email_verification_service,
-    )
-
-    password_reset_service = providers.Factory(
-        PasswordResetService,
-        uow=uow,
-        token_service=verification_token_service,
-        user_service=user_service,
-        email_sender_service=email_sender_service,
-    )
-
-    email_change_service = providers.Factory(
-        EmailChangeService,
-        uow=uow,
-        token_service=verification_token_service,
-        user_service=user_service,
-        email_sender_service=email_sender_service,
+        token_repository=token_repository,
     )
 
 

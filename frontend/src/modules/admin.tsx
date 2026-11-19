@@ -2,7 +2,6 @@ import { useCallback, type ReactNode } from 'react';
 import { Link, Route, Routes, useLocation, useParams } from 'react-router';
 import { classroomsApi, requestStatus } from './classrooms/api';
 import { useRequest } from './classrooms/use-request';
-import { AdminHeader } from './classrooms/admin-header';
 
 const panel = 'rounded-2xl border border-[#e4e4ea] bg-white p-6';
 const button = 'inline-flex rounded-[10px] bg-[#6952b3] px-[18px] py-3 text-sm font-medium text-white hover:bg-[#574198]';
@@ -108,29 +107,11 @@ function ClassroomDetails() {
 }
 
 export function AdminPage() {
-  const { result, retry } = useRequest(classroomsApi.profile);
-
-  const profile = result.status === 'ready' ? result.data : undefined;
-  const status = result.status === 'error' ? requestStatus(result.error) : undefined;
-
   return (
-    <>
-      <AdminHeader profile={profile} />
-      <main className="mx-auto max-w-[1440px] px-5 py-10 lg:px-16">
-        {result.status === 'loading' && <p role="status">Проверяем доступ…</p>}
-        {status === 401 && <p role="alert">Войдите в систему для доступа к управлению.</p>}
-        {(status === 403 || (profile && profile.role !== 'admin')) &&
-          <p role="alert">Управление доступно только администраторам.</p>}
-        {result.status === 'error' && status !== 401 && status !== 403 &&
-          <RequestFailure retry={retry}>Не удалось проверить доступ.</RequestFailure>}
-        {profile?.role === 'admin' && (
-          <Routes>
-            <Route index element={<ClassroomList />} />
-            <Route path="new" element={<p>Форма добавления пока недоступна. <Link to="/admin" className="underline">К списку</Link></p>} />
-            <Route path=":id" element={<ClassroomDetails />} />
-          </Routes>
-        )}
-      </main>
-    </>
+    <Routes>
+      <Route index element={<ClassroomList />} />
+      <Route path="new" element={<p>Форма добавления пока недоступна. <Link to="/admin" className="underline">К списку</Link></p>} />
+      <Route path=":id" element={<ClassroomDetails />} />
+    </Routes>
   );
 }

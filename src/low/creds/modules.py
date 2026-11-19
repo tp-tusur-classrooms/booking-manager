@@ -10,11 +10,6 @@ class TokenCreds(BaseModel):
     secret_key: str
 
 
-class MailerCreds(BaseModel):
-    password: str
-
-
 class ModulesCreds(BaseModel):
     database: DatabaseCreds
     token: TokenCreds
-    mailer: MailerCreds

@@ -7,6 +7,7 @@ from fastapi_pagination.ext.sqlalchemy import apaginate
 from pydantic import BaseModel
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.base.joiner import WithSchema
@@ -176,8 +177,8 @@ class BaseRepository[
         self.session.add(db_obj)
         try:
             await self.session.flush()
-        except Exception as e:
-            if "duplicate" in str(e).lower():
+        except IntegrityError as e:
+            if getattr(e.orig, "sqlstate", None) == "23505":
                 raise DublicateException(f"{self.model.__name__} already exists") from e
             raise
 

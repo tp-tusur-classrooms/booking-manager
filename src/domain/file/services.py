@@ -100,7 +100,7 @@ class BaseFileService(BaseService, ABC):
         return f"{self.public_url}/{file_path!s}"
 
 
-class AvatarFileService(BaseFileService):
+class ImageFileService(BaseFileService):
     async def validate_file(self, file: UploadFile) -> None:
         header = await file.read(2048)
         await file.seek(0)
