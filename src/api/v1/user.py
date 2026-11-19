@@ -3,13 +3,18 @@ import uuid
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, File, Form, Request, Security, UploadFile
 
-from src.api.v1.common import collect_patch_form, get_current_user_id
+from src.api.v1.common import (
+    collect_patch_form,
+    get_current_user,
+    get_current_user_id,
+)
 from src.domain.base.schemas import Success
 import src.domain.email_change.schemas as email_change_schemas
 import src.domain.email_change.services as email_change_services
 import src.domain.users.schemas as user_schemas
 import src.domain.users.services as user_services
 from src.low.container import Container
+from src.low.exceptions import APIException
 
 router = APIRouter()
 
@@ -17,17 +22,16 @@ router = APIRouter()
 @router.get(
     path="/profile",
     response_model=user_schemas.User,
+    responses={401: {"model": APIException}},
     tags=["Users"],
 )
-@inject
 async def get_profile(
-    user_id: uuid.UUID = Security(get_current_user_id),
-    user_service: user_services.UserService = Depends(Provide[Container.user_service]),
+    current_user: user_schemas.User = Security(get_current_user),
 ) -> user_schemas.User:
     """
     Получение профиля пользователя
     """
-    return await user_service.get_by_id(user_id)
+    return current_user
 
 
 @router.post(

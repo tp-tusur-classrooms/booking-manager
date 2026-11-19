@@ -1,7 +1,7 @@
 import uuid
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, Security
+from fastapi import APIRouter, Depends, Response, Security
 
 from src.api.v1.common import (
     get_current_user_id_no_email,
@@ -10,10 +10,10 @@ from src.domain.base.schemas import Success
 import src.domain.email_verification.schemas as email_verification_schemas
 import src.domain.password_reset.schemas as password_reset_schemas
 import src.domain.password_reset.services as password_reset_services
-import src.domain.security.services as security_services
 import src.domain.users.schemas as user_schemas
 import src.domain.users.services as user_services
 from src.low.container import Container
+from src.low.exceptions import APIException
 
 router = APIRouter()
 
@@ -21,6 +21,8 @@ router = APIRouter()
 @router.post(
     path="/auth/register",
     response_model=user_schemas.SignedUserResponce,
+    status_code=201,
+    responses={400: {"model": APIException}, 409: {"model": APIException}},
     tags=["Auth"],
 )
 @inject
@@ -29,14 +31,11 @@ async def register(
     user_service: user_services.UserService = Depends(Provide[Container.user_service]),
 ) -> user_schemas.SignedUserResponce:
     """
-    Выполняется регистрация нового пользователя
+    Создаёт пользователя по имени, логину и паролю, сразу выдаёт JWT.
 
-    Пользователь создается с указанной почтой и паролем. name и avatar = null
-    Новый пользователь помечается как не верифицироанный, отправляется письмо с кодом на
-    почту
+    Логин сохраняется в нижнем регистре. Роль всегда user; дополнительные
+    поля клиента игнорируются. Подтверждение почты не требуется.
     """
-
-    register_user_req.validate_req()
 
     return await user_service.register(register_user_req)
 
@@ -44,6 +43,7 @@ async def register(
 @router.post(
     path="/auth/login",
     response_model=user_schemas.SignedUserResponce,
+    responses={400: {"model": APIException}, 401: {"model": APIException}},
     tags=["Auth"],
 )
 @inject
@@ -100,23 +100,38 @@ async def reset_password(
 @router.post(
     path="/auth/refresh",
     response_model=user_schemas.RefreshedTokenResponse,
+    responses={400: {"model": APIException}, 401: {"model": APIException}},
     tags=["Auth"],
 )
 @inject
 async def refresh_token(
     data: user_schemas.RefreshTokenRequest,
-    token_service: security_services.TokenService = Depends(
-        Provide[Container.token_service]
-    ),
+    user_service: user_services.UserService = Depends(Provide[Container.user_service]),
 ) -> user_schemas.RefreshedTokenResponse:
     """
-    По refresh токену получает новый access токен для пользователя
+    Выдаёт токен доступа по действующему токену обновления и существующему аккаунту.
+    Неверный, истёкший или отозванный токен обновления: 401 invalid_refresh_token.
     """
-    user_id = token_service.get_user_id_from_refresh_token(data.refresh_token)
+    return await user_service.refresh(data.refresh_token)
 
-    token = token_service.create_access_token({"sub": str(user_id)})
 
-    return user_schemas.RefreshedTokenResponse(token=token)
+@router.post(
+    path="/auth/logout",
+    status_code=204,
+    tags=["Auth"],
+    responses={400: {"model": APIException}},
+)
+@inject
+async def logout(
+    data: user_schemas.RefreshTokenRequest,
+    user_service: user_services.UserService = Depends(Provide[Container.user_service]),
+) -> Response:
+    """Отзывает токен обновления в БД. Повторный, неверный или истёкший токен: 204.
+
+    Токен доступа не требуется и действует до exp. Клиент удаляет оба токена.
+    """
+    await user_service.logout(data.refresh_token)
+    return Response(status_code=204)
 
 
 @router.post(

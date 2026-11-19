@@ -44,9 +44,13 @@ class File(Base, AuditMixin):
 class User(Base, AuditMixin, SoftDeleteMixin):
     __tablename__ = "user"
 
-    email: Mapped[str] = mapped_column(sa.String(255))
+    login: Mapped[str] = mapped_column(sa.String(32), nullable=False)
+    role: Mapped[str] = mapped_column(
+        sa.String(16), default="user", server_default="user"
+    )
+    email: Mapped[str | None] = mapped_column(sa.String(255), nullable=True)
     password: Mapped[str] = mapped_column(sa.String(255))
-    name: Mapped[str | None] = mapped_column(sa.String(255), nullable=True)
+    name: Mapped[str] = mapped_column(sa.String(255), nullable=False)
     is_email_verified: Mapped[bool] = mapped_column(sa.Boolean, default=False)
     avatar_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
@@ -57,7 +61,19 @@ class User(Base, AuditMixin, SoftDeleteMixin):
         "File", lazy="selectin", uselist=False, foreign_keys=[avatar_id]
     )
 
-    __table_args__ = (sa.UniqueConstraint("email", name="ix_unique_email"),)
+    __table_args__ = (
+        sa.UniqueConstraint("email", name="ix_unique_email"),
+        sa.UniqueConstraint("login", name="uq_user_login"),
+        sa.CheckConstraint("login = lower(login)", name="ck_user_login_lower"),
+        sa.CheckConstraint("role IN ('user', 'admin')", name="ck_user_role"),
+    )
+
+
+class RevokedRefreshToken(Base):
+    __tablename__ = "revoked_refresh_token"
+
+    # В id хранится идентификатор jti из JWT, а не сам токен.
+    expires_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
 
 
 class VerificationToken(Base, AuditMixin):

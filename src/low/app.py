@@ -15,7 +15,7 @@ from src.api.v1.router import api_router
 from src.low.config.reader import ConfigReader
 from src.low.container import container, setup_container
 from src.low.creds.reader import CredsReader
-from src.low.exceptions import UserException
+from src.low.exceptions import validation_exception
 from src.low.logging import logger
 from src.low.middleware import (
     DatabaseSessionMiddleware,
@@ -45,20 +45,14 @@ class App:
             swagger_ui_parameters={"persistAuthorization": True},
         )
 
-        # 1.5 Регистрируем обработчик для ошибок валидации Pydantic
         @self.app.exception_handler(RequestValidationError)
         async def validation_error_handler(
             request: Any, exc: RequestValidationError
         ) -> JSONResponse:
-            message = ""
-            try:
-                message = exc._errors[0]["msg"]
-            except Exception:
-                message = "Parsing error"
-            user_error = UserException(message=str(message), status_code=400)
+            user_error = validation_exception(exc.errors())
             return JSONResponse(
                 status_code=user_error.status_code,
-                content=user_error.to_api().model_dump(),
+                content=user_error.to_api().model_dump(exclude_none=True),
             )
 
         # 2. Конфигурируем FastApi middleware
@@ -84,6 +78,21 @@ class App:
         # Это включает все уже заданные роуты из роутеров, вебхуки и прочее
         # А также множество другой "документации"
         openapi_schema: dict[str, Any] = self.app.openapi()
+
+        # Обработчик выше возвращает 400 вместо стандартного для FastAPI кода 422.
+        for path in openapi_schema["paths"].values():
+            for operation in path.values():
+                responses = operation.get("responses", {})
+                if "422" in responses:
+                    responses["400"] = {
+                        "description": "Ошибки полей",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/APIException"}
+                            }
+                        },
+                    }
+                    del responses["422"]
 
         # Задаем теги (разделы)
         openapi_schema["tags"] = [

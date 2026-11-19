@@ -108,6 +108,7 @@ class Container(containers.DeclarativeContainer):
         token_service=token_service,
         avatar_file_service=avatar_file_service,
         email_verification_service=email_verification_service,
+        token_repository=token_repository,
     )
 
     password_reset_service = providers.Factory(

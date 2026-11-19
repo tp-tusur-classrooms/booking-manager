@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 
 import aiosmtplib
 import bcrypt
-from jose import JWTError, jwt
+from jose import ExpiredSignatureError, JWTError, jwt
 
 from src.low.config.modules import MailerConfig
 from src.low.exceptions import ServerException, UnauthorizatedException
@@ -92,10 +92,14 @@ class HasherService:
     def validate_password(
         self: Self, plain_password: str, hashed_password: str
     ) -> bool:
-        return bcrypt.checkpw(
-            bytes(plain_password, encoding="utf-8"),
-            bytes(hashed_password, encoding="utf-8"),
-        )
+        try:
+            return bcrypt.checkpw(
+                bytes(plain_password, encoding="utf-8"),
+                bytes(hashed_password, encoding="utf-8"),
+            )
+        except ValueError:
+            # bcrypt отклоняет пароли длиннее 72 байт и некорректные хеши.
+            return False
 
     def get_password_hash(self: Self, password: str) -> str:
         return bcrypt.hashpw(
@@ -150,9 +154,16 @@ class TokenService:
 
     def decode_token(self: Self, token: str) -> dict[str, object]:
         try:
-            return jwt.decode(token, self.secret_key, algorithms=[self.algorithm])
-        except JWTError:
-            raise UnauthorizatedException from ValueError
+            return jwt.decode(
+                token,
+                self.secret_key,
+                algorithms=[self.algorithm],
+                options={"require_exp": True, "require_sub": True, "require_jti": True},
+            )
+        except ExpiredSignatureError as exc:
+            raise UnauthorizatedException("Сессия истекла", "token_expired") from exc
+        except JWTError as exc:
+            raise UnauthorizatedException from exc
 
     def get_user_id_from_token(self: Self, token: str) -> UUID:
         payload = self.decode_token(token)

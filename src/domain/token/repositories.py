@@ -1,6 +1,8 @@
+from datetime import datetime
 import uuid
 
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import insert
 
 from src.domain.base.base_repository import BaseRepository
 from src.domain.base.joiner import WithSchema
@@ -17,6 +19,16 @@ class TokenRepository(
         WithSchema,
     ]
 ):
+    async def is_refresh_revoked(self, token_id: uuid.UUID) -> bool:
+        return await self.session.get(models.RevokedRefreshToken, token_id) is not None
+
+    async def revoke_refresh(self, token_id: uuid.UUID, expires_at: datetime) -> None:
+        await self.session.execute(
+            insert(models.RevokedRefreshToken)
+            .values(id=token_id, expires_at=expires_at)
+            .on_conflict_do_nothing(index_elements=["id"])
+        )
+
     async def invalidate_active(
         self,
         user_id: uuid.UUID,

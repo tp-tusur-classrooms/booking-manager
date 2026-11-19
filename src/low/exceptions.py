@@ -1,12 +1,20 @@
+from collections.abc import Sequence
 import logging
-from typing import Self
+from typing import Any, Self
 
 from pydantic import BaseModel, ValidationError
+
+
+class FieldError(BaseModel):
+    field: str
+    message: str
 
 
 class APIException(BaseModel):
     message: str
     status_code: int
+    code: str
+    errors: list[FieldError] | None = None
 
 
 class BaseException(Exception):
@@ -19,6 +27,8 @@ class BaseException(Exception):
 
     public_message: str
     status_code: int
+    code: str | None = None
+    errors: list[FieldError] | None = None
 
     def __init__(self: Self, message: str, status_code: int) -> None:
         super().__init__(message)
@@ -26,7 +36,19 @@ class BaseException(Exception):
         self.status_code = status_code
 
     def to_api(self: Self) -> APIException:
-        return APIException(message=self.public_message, status_code=self.status_code)
+        default_code = {
+            400: "validation_error",
+            401: "invalid_token",
+            403: "forbidden",
+            404: "not_found",
+            409: "conflict",
+        }.get(self.status_code, "internal_server_error")
+        return APIException(
+            message=self.public_message,
+            status_code=self.status_code,
+            code=self.code or default_code,
+            errors=self.errors,
+        )
 
 
 class PanicException(BaseException):
@@ -84,9 +106,18 @@ class UserException(BaseException):
         Доступ к записи ограничен
     """
 
-    def __init__(self: Self, message: str, status_code: int = 400) -> None:
+    def __init__(
+        self: Self,
+        message: str,
+        status_code: int = 400,
+        *,
+        code: str | None = None,
+        errors: list[FieldError] | None = None,
+    ) -> None:
         self.public_message = message
         self.status_code = status_code
+        self.code = code
+        self.errors = errors
 
 
 class ServerException(PanicException):
@@ -132,6 +163,24 @@ class TimeoutException(PanicException):
         )
 
 
+def validation_exception(errors: Sequence[Any]) -> UserException:
+    return UserException(
+        "Проверьте заполнение полей",
+        code="validation_error",
+        errors=[
+            FieldError(
+                field=".".join(
+                    str(part)
+                    for part in error["loc"]
+                    if part not in {"body", "query", "path"}
+                ),
+                message=error["msg"],
+            )
+            for error in errors
+        ],
+    )
+
+
 def resolve_exception(any_ex: Exception, ex_logger: logging.Logger) -> APIException:
     """
     Определяет что нужно делать с ошибкой
@@ -139,9 +188,9 @@ def resolve_exception(any_ex: Exception, ex_logger: logging.Logger) -> APIExcept
     Независимо от типа ошибки, вернет APIExceptio
     """
 
-    # Pydantic validation error - wrap as user error
+    # Преобразуем ошибку валидации Pydantic в ошибку пользователя.
     if isinstance(any_ex, ValidationError):
-        ex = UserException(message=str(any_ex), status_code=400)
+        ex = validation_exception(any_ex.errors())
         return ex.to_api()
 
     # является ли ошибка системной
@@ -178,8 +227,10 @@ class DublicateException(UserException):
 class UnauthorizatedException(UserException):
     """Ошибка авторизации, например при плохом токене"""
 
-    def __init__(self) -> None:
-        super().__init__(message="Ошибка авторизации", status_code=401)
+    def __init__(
+        self, message: str = "Ошибка авторизации", code: str = "invalid_token"
+    ) -> None:
+        super().__init__(message=message, status_code=401, code=code)
 
 
 class EmailUnverifiedException(UserException):
