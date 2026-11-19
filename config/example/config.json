@@ -34,17 +34,6 @@
       "refresh_token_expire_days": 30,
       "algorithm": "HS256"
     },
-    "verification_token": {
-      "code_length": 6,
-      "expiry_minutes": 15,
-      "max_attempts": 5
-    },
-    "mailer": {
-      "smtp_server": "smtp.yandex.ru:465",
-      "sender_email": "noreply@example.com",
-      "templates_path": "./src/domain/security/templates",
-      "mock_sending": true
-    },
     "files": {
       "public_path": "./public",
       "public_url": "http://127.0.0.1:4001/public"
