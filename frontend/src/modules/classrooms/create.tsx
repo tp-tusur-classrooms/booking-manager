@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { requestStatus } from './api';
-import { createClassroom, getClassroomOptions, validationDetails } from './create-api';
+import { createClassroom, getClassroomOptions, publishClassroom, uploadClassroomPhoto, validationDetails } from './create-api';
 import { useRequest } from './use-request';
 
 const fields = ['number', 'building', 'floor', 'capacity', 'equipment', 'description', 'photo'] as const;
@@ -38,6 +38,8 @@ export function ClassroomCreate() {
   const [photo, setPhoto] = useState<File | null>(null);
   const [preview, setPreview] = useState('');
   const [pending, setPending] = useState(false);
+  const [draftId, setDraftId] = useState<string>();
+  const [photoUploaded, setPhotoUploaded] = useState(false);
   const submitting = useRef(false);
   const active = useRef(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -76,18 +78,26 @@ export function ClassroomCreate() {
     const read = (name: FieldName) => String(form.get(name) ?? '').trim();
     const input = {
       number: read('number'),
-      building: read('building'),
+      building_id: read('building'),
       floor: Number(read('floor')),
       capacity: Number(read('capacity')),
-      equipment: form.getAll('equipment').map(String),
-      description: read('description'),
+      equipment_ids: form.getAll('equipment').map(String),
+      description: read('description') || null,
     };
     const next: Errors = {};
-    if (!input.number) next.number = 'Введите номер аудитории.';
-    if (!input.building) next.building = 'Выберите корпус.';
-    if (!read('floor') || !Number.isSafeInteger(input.floor)) next.floor = 'Укажите этаж целым числом.';
-    if (!Number.isSafeInteger(input.capacity) || input.capacity <= 0) {
-      next.capacity = 'Укажите целое число больше нуля.';
+    if (!draftId) {
+      if (!input.number) next.number = 'Введите номер аудитории.';
+      else if (Array.from(input.number).length > 20) next.number = 'Введите не больше 20 символов.';
+      if (!input.building_id) next.building = 'Выберите корпус.';
+      if (!read('floor') || !Number.isInteger(input.floor) || input.floor < -5 || input.floor > 50) {
+        next.floor = 'Укажите целое число от −5 до 50.';
+      }
+      if (!Number.isInteger(input.capacity) || input.capacity < 1 || input.capacity > 1000) {
+        next.capacity = 'Укажите целое число от 1 до 1000.';
+      }
+      if (input.description && Array.from(input.description).length > 1000) {
+        next.description = 'Введите не больше 1000 символов.';
+      }
     }
     if (errors.photo && !photo) next.photo = errors.photo;
     setErrors(next);
@@ -96,24 +106,41 @@ export function ClassroomCreate() {
 
     submitting.current = true;
     setPending(true);
+    let stage: 'create' | 'photo' | 'publish' = 'create';
     try {
-      await createClassroom(input, photo);
+      const id = draftId ?? await createClassroom(input);
+      setDraftId(id);
+      if (photo && !photoUploaded) {
+        stage = 'photo';
+        await uploadClassroomPhoto(id, photo);
+        setPhotoUploaded(true);
+      }
+      stage = 'publish';
+      await publishClassroom(id);
       if (active.current) void navigate('/admin', { replace: true, state: { created: true } });
     } catch (error) {
       const status = requestStatus(error);
-      if (status === 409) {
+      if (stage === 'create' && status === 409) {
         setErrors({ number: 'Аудитория с таким номером уже есть в этом корпусе.' });
       } else {
         const serverErrors: Errors = {};
+        const fieldAliases: Record<string, FieldName> = {
+          building_id: 'building', equipment_ids: 'equipment', file: 'photo',
+        };
         for (const issue of validationDetails(error)) {
-          const key = fields.find((name) => issue.loc?.includes(name));
-          if (key && issue.msg) serverErrors[key] = issue.msg;
+          const key = fields.find((name) => name === (fieldAliases[issue.field] ?? issue.field));
+          if (key && issue.message) serverErrors[key] = issue.message;
         }
         setErrors(serverErrors);
         if (!Object.keys(serverErrors).length) {
+          const messages = {
+            create: 'Не удалось создать аудиторию. Повторите отправку.',
+            photo: 'Черновик сохранён. Не удалось загрузить фото. Повторите отправку.',
+            publish: 'Черновик сохранён. Не удалось опубликовать аудиторию. Повторите отправку.',
+          };
           setMessage(status === 401 || status === 403
             ? 'Для публикации нужен доступ администратора.'
-            : 'Не удалось создать аудиторию. Проверьте данные и повторите отправку.');
+            : messages[stage]);
         }
       }
     } finally {
@@ -137,7 +164,7 @@ export function ClassroomCreate() {
         className="grid items-start gap-8 lg:grid-cols-[2.08fr_1fr]">
         <section className={panel} aria-labelledby="room-info">
           <h2 id="room-info" className="mb-6 text-[22px] font-bold">Основная информация</h2>
-          <fieldset disabled={pending} className="space-y-6">
+          <fieldset disabled={pending || Boolean(draftId)} className="space-y-6">
             <div className="grid gap-6 sm:grid-cols-3">
               <Field name="number" label="Номер аудитории" errors={errors}>
                 <input {...props('number')} required />
@@ -174,16 +201,17 @@ export function ClassroomCreate() {
               <textarea {...props('description')} rows={2} className={`${input} resize-y`} />
             </Field>
           </fieldset>
+          {draftId && !pending && <p className="mt-4 text-sm">Аудитория сохранена как черновик.</p>}
           {message && <p role="alert" className="mt-4 text-sm text-red-700">{message}</p>}
           <div className="mt-6 flex items-center gap-3">
             <button type="submit" disabled={pending || result.status !== 'ready'}
               className="rounded-[10px] bg-[#6952b3] px-[18px] py-3 text-sm text-white hover:bg-[#574198] disabled:opacity-60">
-              {pending ? 'Добавляем…' : 'Добавить аудиторию'}
+              {pending ? 'Сохраняем…' : draftId ? 'Продолжить публикацию' : 'Добавить аудиторию'}
             </button>
             {pending ? (
               <button type="button" disabled className="rounded-[10px] border border-[#e4e4ea] px-5 py-3 text-sm opacity-60">Отмена</button>
             ) : (
-              <Link to="/admin" className="rounded-[10px] border border-[#e4e4ea] px-5 py-3 text-sm hover:bg-[#f7f7f9]">Отмена</Link>
+              <Link to="/admin" className="rounded-[10px] border border-[#e4e4ea] px-5 py-3 text-sm hover:bg-[#f7f7f9]">{draftId ? 'К списку' : 'Отмена'}</Link>
             )}
           </div>
         </section>
@@ -194,13 +222,13 @@ export function ClassroomCreate() {
             <p className="text-sm">{photo ? photo.name : 'Добавьте фотографию'}</p>
             <p id="photo-format" className="my-3 text-xs text-[#626674]">JPG или PNG · до 10 МБ</p>
             <input ref={fileInput} type="file" id="photo" name="photo" accept="image/jpeg,image/png"
-              className="peer sr-only" disabled={pending} aria-invalid={Boolean(errors.photo)}
+              className="peer sr-only" disabled={pending || photoUploaded} aria-invalid={Boolean(errors.photo)}
               aria-describedby={errors.photo ? 'photo-format photo-error' : 'photo-format'}
               onChange={(event) => selectPhoto(event.currentTarget.files?.[0] ?? null)} />
-            <label htmlFor="photo" className="inline-flex w-full max-w-60 cursor-pointer justify-center rounded-[10px] border border-[#e4e4ea] bg-white px-5 py-3 text-sm peer-focus-visible:outline-2 peer-focus-visible:outline-[#6952b3]">
+            {!photoUploaded && <label htmlFor="photo" className="inline-flex w-full max-w-60 cursor-pointer justify-center rounded-[10px] border border-[#e4e4ea] bg-white px-5 py-3 text-sm peer-focus-visible:outline-2 peer-focus-visible:outline-[#6952b3]">
               {photo ? 'Заменить файл' : 'Выбрать файл'}
-            </label>
-            {(photo || errors.photo) && (
+            </label>}
+            {!photoUploaded && (photo || errors.photo) && (
               <button type="button" disabled={pending} onClick={() => selectPhoto(null)}
                 className="mx-auto mt-3 block text-sm text-[#6952b3] underline">{photo ? 'Удалить фото' : 'Продолжить без фото'}</button>
             )}
