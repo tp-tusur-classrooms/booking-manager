@@ -1,11 +1,13 @@
+import '@fontsource-variable/inter/index.css';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Link, NavLink, Route, Routes } from 'react-router';
 import { AdminPage } from './modules/admin';
+import { LoginPage } from './modules/login';
 import { UserPage } from './modules/user';
 import './styles.css';
 
-function App() {
+function Shell() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-950">
       <header className="border-b border-slate-200 bg-white">
@@ -41,6 +43,15 @@ function App() {
         </Routes>
       </main>
     </div>
+  );
+}
+
+function App() {
+  return (
+    <Routes>
+      <Route path="login" element={<LoginPage />} />
+      <Route path="*" element={<Shell />} />
+    </Routes>
   );
 }
 
