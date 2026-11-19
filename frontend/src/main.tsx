@@ -7,6 +7,7 @@ import { AdminPage } from './modules/admin';
 import { CatalogPage } from './modules/catalog';
 import { LoginPage } from './modules/login';
 import { RoomRoute } from './modules/room';
+import { SchedulePage } from './modules/schedule/page';
 import { useSession } from './session';
 import './styles.css';
 
@@ -23,6 +24,7 @@ function App() {
       <Route element={<RequireAuth />}>
         <Route element={<Layout />}>
           <Route index element={<Home />} />
+          <Route path="schedule" element={<SchedulePage />} />
           <Route element={<RequireRole role="user" />}>
             <Route path="rooms" element={<CatalogPage />} />
             <Route path="rooms/:roomId" element={<RoomRoute />} />

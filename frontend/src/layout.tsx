@@ -4,8 +4,14 @@ import bell from './assets/notifications.svg';
 import { homeByRole, useSession, type Role } from './session';
 
 const navByRole: Record<Role, { to: string; label: string }[]> = {
-  user: [{ to: '/rooms', label: 'Найти аудиторию' }],
-  admin: [{ to: '/admin', label: 'Управление' }],
+  user: [
+    { to: '/rooms', label: 'Найти аудиторию' },
+    { to: '/schedule', label: 'Расписание' },
+  ],
+  admin: [
+    { to: '/admin', label: 'Управление' },
+    { to: '/schedule', label: 'Расписание' },
+  ],
 };
 
 function nameLines(name: string) {
@@ -66,7 +72,7 @@ function Header() {
           <img src={logo} alt="" width={32} height={40} />
           <span className="hidden text-xl font-bold text-black sm:inline">Аудитории</span>
         </Link>
-        <nav aria-label="Основная навигация" className="ml-6 flex gap-16 lg:ml-0">
+        <nav aria-label="Основная навигация" className="ml-4 flex gap-5 sm:ml-6 sm:gap-10 lg:ml-0 lg:gap-16">
           {navByRole[user.role].map((item) => (
             <NavLink
               key={item.to}
