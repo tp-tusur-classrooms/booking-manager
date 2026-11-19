@@ -6,7 +6,6 @@ from fastapi import UploadFile
 
 from src.domain.base.base_service import BaseService
 from src.domain.common import models
-from src.domain.email_verification.services import EmailVerificationService
 import src.domain.file.schemas as file_schemas
 from src.domain.file.services import AvatarFileService
 from src.domain.security.services import HasherService, TokenService
@@ -37,7 +36,6 @@ class UserService(BaseService):
         hasher_service: HasherService,
         token_service: TokenService,
         avatar_file_service: AvatarFileService,
-        email_verification_service: EmailVerificationService,
         token_repository: TokenRepository,
     ) -> None:
         self.uow = uow
@@ -46,9 +44,6 @@ class UserService(BaseService):
         self.token_service = token_service
         self.token_repository = token_repository
         self.avatar_file_service = avatar_file_service
-        self.email_verification_service: EmailVerificationService = (
-            email_verification_service
-        )
 
     # Вспомогательные методы и преобразования
     def _with(self: Self) -> user_schemas.UserWith:
@@ -265,9 +260,3 @@ class UserService(BaseService):
             raise UserException("Пароли должны совпадать")
         async with self.uow:
             await self.set_password(user.id, update_data.new_password)
-
-    async def verify_email(self: Self, user_id: uuid.UUID, code: str) -> None:
-        async with self.uow:
-            await self.email_verification_service.verify_email(user_id, code)
-
-            await self.update(user_id, user_schemas.UpdateUser(is_email_verified=True))

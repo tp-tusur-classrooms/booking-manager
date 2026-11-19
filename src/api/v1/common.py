@@ -44,9 +44,6 @@ async def get_current_user_id(
     return current_user.id
 
 
-get_current_user_id_no_email = get_current_user_id
-
-
 async def require_admin(current_user: User = Security(get_current_user)) -> User:
     """Подключается через Security(require_admin) к административным методам.
 

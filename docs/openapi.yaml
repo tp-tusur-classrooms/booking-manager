@@ -10,12 +10,11 @@ info:
 
     Защищённые методы принимают access-токен в заголовке
     `Authorization: Bearer <token>`. Access-токен действует 30 минут,
-    refresh-токен — 30 дней. Оба выдаются при регистрации и входе.
+    refresh-токен действует 30 дней. Оба выдаются при входе.
 
     Роль пользователя (`user` или `admin`) возвращается методом `GET /profile`
-    и в ответах регистрации и входа. При регистрации роль не передаётся:
-    новый пользователь всегда получает роль `user`. Администраторы назначаются
-    вне API.
+    и в ответе входа. Учётные записи создаются и роли назначаются вне API.
+    Публичной регистрации и операций с почтой нет.
 
     Отсутствие или недействительность токена — `401`. Недостаточно прав — `403`.
 
@@ -73,7 +72,7 @@ servers:
     description: Локальный FastAPI
 tags:
   - name: Auth
-    description: Регистрация, вход, выход и обновление сессии
+    description: Вход, выход и обновление сессии
   - name: Users
     description: Текущий пользователь и роль
   - name: References
@@ -102,83 +101,6 @@ paths:
                 $ref: '#/components/schemas/Health'
               example:
                 status: ok
-  /auth/register:
-    post:
-      tags: [Auth]
-      operationId: register
-      summary: Зарегистрироваться
-      description: |
-        Создаёт пользователя с ролью `user` и сразу выполняет вход.
-        Логин сравнивается без учёта регистра и сохраняется в нижнем регистре.
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RegisterRequest'
-            example:
-              name: Иван Иванов
-              login: ivanov
-              password: Secret-123
-              confirm_password: Secret-123
-      responses:
-        '201':
-          description: Пользователь создан, сессия открыта
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SignedUser'
-              example:
-                user:
-                  id: 3f6c2a1e-5b7d-4c8e-9f10-2a3b4c5d6e7f
-                  name: Иван Иванов
-                  login: ivanov
-                  role: user
-                token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.access
-                refresh_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.refresh
-        '400':
-          description: Ошибки полей
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              examples:
-                emptyFields:
-                  summary: Пустые поля
-                  value:
-                    message: Проверьте заполнение полей
-                    status_code: 400
-                    code: validation_error
-                    errors:
-                      - field: name
-                        message: Введите имя
-                      - field: login
-                        message: Введите логин
-                      - field: password
-                        message: Введите пароль
-                passwordsMismatch:
-                  summary: Пароли не совпадают
-                  value:
-                    message: Проверьте заполнение полей
-                    status_code: 400
-                    code: validation_error
-                    errors:
-                      - field: confirm_password
-                        message: Пароли должны совпадать
-        '409':
-          description: Логин уже занят
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              example:
-                message: Такой логин уже занят
-                status_code: 409
-                code: login_taken
-                errors:
-                  - field: login
-                    message: Такой логин уже занят
   /auth/login:
     post:
       tags: [Auth]
@@ -1157,12 +1079,6 @@ components:
       maxLength: 32
       pattern: '^[A-Za-z0-9._-]+$'
       description: Уникальный логин. Сравнивается без учёта регистра.
-    Password:
-      type: string
-      minLength: 8
-      maxLength: 16
-      pattern: '^[A-Za-z0-9!#$%&*+\-.<=>?@^_]+$'
-      description: Латинские буквы, цифры и символы `!#$%&*+-.<=>?@^_`.
     User:
       type: object
       required: [id, name, login, role]
@@ -1176,20 +1092,6 @@ components:
           $ref: '#/components/schemas/Login'
         role:
           $ref: '#/components/schemas/Role'
-    RegisterRequest:
-      type: object
-      required: [name, login, password, confirm_password]
-      additionalProperties: false
-      properties:
-        name:
-          $ref: '#/components/schemas/Name'
-        login:
-          $ref: '#/components/schemas/Login'
-        password:
-          $ref: '#/components/schemas/Password'
-        confirm_password:
-          type: string
-          description: Должен совпадать с `password`.
     LoginRequest:
       type: object
       required: [login, password]
@@ -1550,7 +1452,7 @@ components:
           description: |
             Машиночитаемый код ошибки: `validation_error`, `not_authenticated`,
             `invalid_token`, `token_expired`, `invalid_credentials`,
-            `invalid_refresh_token`, `forbidden`, `not_found`, `login_taken`,
+            `invalid_refresh_token`, `forbidden`, `not_found`,
             `room_number_taken`, `file_too_large`, `unsupported_media_type`,
             `lesson_conflict`.
         errors:
