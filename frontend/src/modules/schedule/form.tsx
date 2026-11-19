@@ -2,7 +2,7 @@ import { isAxiosError } from 'axios';
 import { useCallback, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import type { ApiError } from '../../api';
-import { FormField, inputClass, Notice, primaryButton, secondaryButton, StatePanel } from '../../ui';
+import { ConfirmDialog, FormField, inputClass, Notice, primaryButton, secondaryButton, StatePanel } from '../../ui';
 import { classroomsApi, requestStatus, type Classroom } from '../classrooms/api';
 import { useRequest } from '../classrooms/use-request';
 import { periodTime, scheduleApi, type Lesson, type LessonWrite, type Period, type WeekParity } from './api';
@@ -145,6 +145,79 @@ function failure(error: unknown): { errors: Errors; problem: Problem } {
   return { errors: {}, problem: { title: 'Не удалось сохранить занятие', text: data?.message ?? 'Попробуйте ещё раз.' } };
 }
 
+const longDay = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+
+function dayText(date: string) {
+  return longDay.format(new Date(`${date}T00:00:00Z`));
+}
+
+function DeleteLesson({ lesson, backDate }: { lesson: Lesson; backDate: string | null }) {
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  const repeat = parities.find((parity) => parity.value === lesson.week_parity)?.label.toLowerCase();
+  const range = lesson.starts_on === lesson.ends_on ? dayText(lesson.starts_on) : `с ${dayText(lesson.starts_on)} по ${dayText(lesson.ends_on)}`;
+
+  async function remove() {
+    setDeleting(true);
+    setProblem(null);
+    try {
+      await scheduleApi.remove(lesson.id);
+      navigate(`/schedule?date=${backDate ?? lesson.starts_on}`);
+    } catch (error) {
+      if (requestStatus(error) === 404) {
+        navigate(`/schedule?date=${backDate ?? lesson.starts_on}`);
+        return;
+      }
+      setProblem(isAxiosError(error) && error.response ? 'Сервер не смог удалить занятие. Попробуйте ещё раз.' : 'Сервер недоступен. Проверьте подключение и попробуйте снова.');
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="h-11 cursor-pointer rounded-[10px] px-4 text-sm leading-5 text-danger outline-danger hover:bg-error-soft focus-visible:outline-2 focus-visible:outline-offset-2 sm:ml-auto"
+      >
+        Удалить занятие
+      </button>
+      <ConfirmDialog
+        open={open}
+        title="Удалить занятие?"
+        cancelLabel="Оставить занятие"
+        confirmLabel={deleting ? 'Удаляем…' : 'Удалить занятие'}
+        busy={deleting}
+        onCancel={() => {
+          setOpen(false);
+          setProblem(null);
+        }}
+        onConfirm={() => void remove()}
+      >
+        <p className="text-sm leading-5 font-bold">{lesson.subject ?? 'Учебное занятие'}</p>
+        <p className="mt-2 text-sm leading-[22px] text-muted">
+          Аудитория {lesson.room.number} · {lesson.room.building.name}
+          <br />
+          {weekdays[lesson.weekday - 1]} · {periodTime(lesson.period)} · {repeat}
+          <br />
+          {range}
+        </p>
+        <p className="mt-6 border-t border-line pt-6 text-sm leading-[22px] text-muted">
+          Занятие исчезнет из расписания на все эти даты. Вернуть его можно будет только добавив заново.
+        </p>
+        {problem && (
+          <div className="mt-6">
+            <Notice title="Не удалось удалить занятие" text={problem} />
+          </div>
+        )}
+      </ConfirmDialog>
+    </>
+  );
+}
+
 function LessonForm({ data, lessonId, backDate }: { data: FormData; lessonId?: string; backDate: string | null }) {
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -254,6 +327,7 @@ function LessonForm({ data, lessonId, backDate }: { data: FormData; lessonId?: s
         <Link to={back} className={secondaryButton}>
           Отмена
         </Link>
+        {data.lesson && <DeleteLesson lesson={data.lesson} backDate={backDate} />}
       </div>
     </form>
   );
