@@ -4,7 +4,7 @@ import bell from './assets/notifications.svg';
 import { homeByRole, useSession, type Role } from './session';
 
 const navByRole: Record<Role, { to: string; label: string }[]> = {
-  user: [{ to: '/', label: 'Найти аудиторию' }],
+  user: [{ to: '/rooms', label: 'Найти аудиторию' }],
   admin: [{ to: '/admin', label: 'Управление' }],
 };
 
@@ -33,6 +33,12 @@ export function RequireAuth() {
     return <Navigate to="/login" replace state={state} />;
   }
   return <Outlet />;
+}
+
+export function Home() {
+  const user = useSession((state) => state.user);
+
+  return user ? <Navigate to={homeByRole[user.role]} replace /> : null;
 }
 
 export function RequireRole({ role }: { role: Role }) {
