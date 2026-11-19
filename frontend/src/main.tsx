@@ -7,6 +7,8 @@ import { AdminPage } from './modules/admin';
 import { CatalogPage } from './modules/catalog';
 import { LoginPage } from './modules/login';
 import { RoomRoute } from './modules/room';
+import { EditLessonRoute, NewLessonRoute } from './modules/schedule/form';
+import { SchedulePage } from './modules/schedule/page';
 import { useSession } from './session';
 import './styles.css';
 
@@ -23,12 +25,15 @@ function App() {
       <Route element={<RequireAuth />}>
         <Route element={<Layout />}>
           <Route index element={<Home />} />
+          <Route path="schedule" element={<SchedulePage />} />
           <Route element={<RequireRole role="user" />}>
             <Route path="rooms" element={<CatalogPage />} />
             <Route path="rooms/:roomId" element={<RoomRoute />} />
           </Route>
           <Route element={<RequireRole role="admin" />}>
             <Route path="admin/*" element={<AdminPage />} />
+            <Route path="schedule/new" element={<NewLessonRoute />} />
+            <Route path="schedule/:lessonId/edit" element={<EditLessonRoute />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Route>
