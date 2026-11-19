@@ -1,15 +1,18 @@
 import { isAxiosError } from 'axios';
 import { api } from '../../api';
 
+export type Reference = { id: string; name: string };
+
 export type Classroom = {
   id: string;
   number: string;
-  building: string;
+  building: Reference;
   floor: number;
   capacity: number;
-  equipment: string[];
-  description: string;
-  photo_url?: string | null;
+  equipment: Reference[];
+  description: string | null;
+  photo_url: string | null;
+  status: 'draft' | 'published';
 };
 
 export type AdminProfile = {
@@ -24,12 +27,12 @@ export const classroomsApi = {
     return data;
   },
   async list(signal: AbortSignal) {
-    const { data } = await api.get<Classroom[]>('/classrooms', { signal, ...session() });
-    if (!Array.isArray(data)) throw new Error('Некорректный список аудиторий');
-    return data;
+    const { data } = await api.get<{ items: Classroom[] }>('/rooms', { signal, ...session() });
+    if (!Array.isArray(data?.items)) throw new Error('Некорректный список аудиторий');
+    return data.items;
   },
   async get(id: string, signal: AbortSignal) {
-    const { data } = await api.get<Classroom>(`/classrooms/${encodeURIComponent(id)}`, { signal, ...session() });
+    const { data } = await api.get<Classroom>(`/rooms/${encodeURIComponent(id)}`, { signal, ...session() });
     if (!data?.id) throw new Error('Некорректная карточка аудитории');
     return data;
   },

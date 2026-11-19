@@ -39,7 +39,7 @@ function ClassroomList() {
       <section aria-label="Список аудиторий" className={panel}>
         {result.status === 'loading' && <p role="status">Загрузка аудиторий…</p>}
         {result.status === 'error' && <RequestFailure retry={retry}>Не удалось загрузить аудитории.</RequestFailure>}
-        {result.status === 'ready' && (result.data.length === 0 ? (
+        {result.status === 'ready' && (!result.data.some((room) => room.status === 'published') ? (
           <p>Список пока пуст. Добавьте первую аудиторию.</p>
         ) : (
           <div className="overflow-x-auto">
@@ -52,12 +52,12 @@ function ClassroomList() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#e4e4ea]">
-                {result.data.map((room) => (
+                {result.data.filter((room) => room.status === 'published').map((room) => (
                   <tr key={room.id}>
                     <th scope="row" className="py-5 pr-4 font-medium">Ауд. {room.number}</th>
-                    <td className="pr-4">Корпус {room.building} · {room.floor} этаж</td>
+                    <td className="pr-4">{room.building.name} · {room.floor} этаж</td>
                     <td className="pr-4">{room.capacity}</td>
-                    <td className="pr-4">{room.equipment.join(', ') || 'Не указано'}</td>
+                    <td className="pr-4">{room.equipment.map(({ name }) => name).join(', ') || 'Не указано'}</td>
                     <td className="py-5">
                       <Link to={encodeURIComponent(room.id)} aria-label={`Посмотреть аудиторию ${room.number}`}
                         className="inline-flex rounded-[10px] border border-[#e4e4ea] px-[18px] py-2.5 hover:bg-[#f7f7f9]">
@@ -93,9 +93,9 @@ function ClassroomDetails() {
             <div>
               <h1 className="mb-5 text-[32px] font-bold">Аудитория {result.data.number}</h1>
               <dl className="grid gap-4 text-sm">
-                <div><dt className="text-[#626674]">Расположение</dt><dd>Корпус {result.data.building} · {result.data.floor} этаж</dd></div>
+                <div><dt className="text-[#626674]">Расположение</dt><dd>{result.data.building.name} · {result.data.floor} этаж</dd></div>
                 <div><dt className="text-[#626674]">Вместимость</dt><dd>{result.data.capacity}</dd></div>
-                <div><dt className="text-[#626674]">Оборудование</dt><dd>{result.data.equipment.join(', ') || 'Не указано'}</dd></div>
+                <div><dt className="text-[#626674]">Оборудование</dt><dd>{result.data.equipment.map(({ name }) => name).join(', ') || 'Не указано'}</dd></div>
                 {result.data.description && <div><dt className="text-[#626674]">Описание</dt><dd>{result.data.description}</dd></div>}
               </dl>
             </div>
