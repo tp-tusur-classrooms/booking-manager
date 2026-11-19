@@ -1,0 +1,1689 @@
+openapi: 3.1.0
+info:
+  title: Бронирование аудиторий ТУСУР
+  version: 0.1.0
+  description: |
+    Статический контракт API первого спринта. Описывает поведение, на которое
+    опираются фронтенд и бэкенд при параллельной разработке.
+
+    ## Авторизация
+
+    Защищённые методы принимают access-токен в заголовке
+    `Authorization: Bearer <token>`. Access-токен действует 30 минут,
+    refresh-токен — 30 дней. Оба выдаются при регистрации и входе.
+
+    Роль пользователя (`user` или `admin`) возвращается методом `GET /profile`
+    и в ответах регистрации и входа. При регистрации роль не передаётся:
+    новый пользователь всегда получает роль `user`. Администраторы назначаются
+    вне API.
+
+    Отсутствие или недействительность токена — `401`. Недостаточно прав — `403`.
+
+    ## Истечение сессии
+
+    Когда access-токен истёк, защищённый метод отвечает `401` с кодом
+    `token_expired`. Клиент один раз вызывает `POST /auth/refresh` и повторяет
+    исходный запрос с новым токеном. Если refresh тоже отвечает `401`, клиент
+    удаляет токены и переходит на экран входа. Методы `/auth/refresh` и
+    `/auth/logout` не требуют access-токен, поэтому цикла перенаправлений нет.
+
+    ## Выход
+
+    `POST /auth/logout` отзывает переданный refresh-токен и всегда отвечает
+    `204`. Клиент удаляет оба токена. Access-токен не отзывается сервером
+    и перестаёт действовать по истечении срока.
+
+    ## Даты и время
+
+    Все даты и время относятся к часовому поясу `Asia/Tomsk` (UTC+7, без
+    перехода на летнее время).
+
+    - Календарная дата — строка `YYYY-MM-DD`, например `2026-10-22`.
+    - Время начала и окончания учебного периода — строка `HH:MM`, например `13:15`.
+    - Момент времени — RFC 3339 со смещением, например `2026-10-22T13:15:00+07:00`.
+
+    ## Учебные периоды и расписание
+
+    Учебный период — фиксированный интервал дня из справочника `GET /periods`,
+    например `13:15–14:50`. Свободный ввод времени не предусмотрен.
+
+    Занятие повторяется в выбранный день недели и учебный период с даты
+    `starts_on` по дату `ends_on` включительно: каждую неделю, только по нечётным
+    или только по чётным неделям. Неделя начинается в понедельник. Первая неделя
+    учебного года — неделя, содержащая 1 сентября; она нечётная. Учебный год
+    длится с 1 сентября по 31 августа.
+
+    Два занятия пересекаются, если у них одна аудитория, один день недели
+    и один учебный период, диапазоны дат перекрываются, а недели совместимы
+    (`every` совместима с любой, `odd` с `odd`, `even` с `even`).
+
+    Список статусов занятости может расширяться в следующих спринтах. Клиент
+    считает неизвестный статус недоступным для выбора.
+
+    ## Ошибки
+
+    Все ошибки возвращаются в одном формате `Error`. Поле `code` предназначено
+    для программной обработки, `message` — для показа пользователю. Ошибки
+    отдельных полей перечисляются в `errors` с кодом `validation_error`
+    и статусом `400`.
+servers:
+  - url: /api/v1
+    description: Тот же origin, что и фронтенд
+  - url: http://127.0.0.1:4001/api/v1
+    description: Локальный FastAPI
+tags:
+  - name: Auth
+    description: Регистрация, вход, выход и обновление сессии
+  - name: Users
+    description: Текущий пользователь и роль
+  - name: References
+    description: Справочники корпусов и оборудования
+  - name: Rooms
+    description: Каталог, карточка, создание и публикация аудиторий
+  - name: Schedule
+    description: Учебные периоды, глобальное расписание и занятость аудиторий
+  - name: System
+    description: Служебные методы
+security:
+  - bearerAuth: []
+paths:
+  /health:
+    get:
+      tags: [System]
+      operationId: getHealth
+      summary: Проверить доступность API
+      security: []
+      responses:
+        '200':
+          description: API работает
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+              example:
+                status: ok
+  /auth/register:
+    post:
+      tags: [Auth]
+      operationId: register
+      summary: Зарегистрироваться
+      description: |
+        Создаёт пользователя с ролью `user` и сразу выполняет вход.
+        Логин сравнивается без учёта регистра и сохраняется в нижнем регистре.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            example:
+              name: Иван Иванов
+              login: ivanov
+              password: Secret-123
+              confirm_password: Secret-123
+      responses:
+        '201':
+          description: Пользователь создан, сессия открыта
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignedUser'
+              example:
+                user:
+                  id: 3f6c2a1e-5b7d-4c8e-9f10-2a3b4c5d6e7f
+                  name: Иван Иванов
+                  login: ivanov
+                  role: user
+                token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.access
+                refresh_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.refresh
+        '400':
+          description: Ошибки полей
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                emptyFields:
+                  summary: Пустые поля
+                  value:
+                    message: Проверьте заполнение полей
+                    status_code: 400
+                    code: validation_error
+                    errors:
+                      - field: name
+                        message: Введите имя
+                      - field: login
+                        message: Введите логин
+                      - field: password
+                        message: Введите пароль
+                passwordsMismatch:
+                  summary: Пароли не совпадают
+                  value:
+                    message: Проверьте заполнение полей
+                    status_code: 400
+                    code: validation_error
+                    errors:
+                      - field: confirm_password
+                        message: Пароли должны совпадать
+        '409':
+          description: Логин уже занят
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Такой логин уже занят
+                status_code: 409
+                code: login_taken
+                errors:
+                  - field: login
+                    message: Такой логин уже занят
+  /auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      summary: Войти
+      description: |
+        Проверяет логин и пароль. При неверной паре не сообщает, какое
+        из значений ошибочно.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              login: ivanov
+              password: Secret-123
+      responses:
+        '200':
+          description: Сессия открыта
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignedUser'
+              examples:
+                user:
+                  summary: Пользователь
+                  value:
+                    user:
+                      id: 3f6c2a1e-5b7d-4c8e-9f10-2a3b4c5d6e7f
+                      name: Иван Иванов
+                      login: ivanov
+                      role: user
+                    token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.access
+                    refresh_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.refresh
+                admin:
+                  summary: Администратор
+                  value:
+                    user:
+                      id: 9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d
+                      name: Пётр Петров
+                      login: admin
+                      role: admin
+                    token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.access
+                    refresh_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.refresh
+        '400':
+          description: Не заполнены поля
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Проверьте заполнение полей
+                status_code: 400
+                code: validation_error
+                errors:
+                  - field: password
+                    message: Введите пароль
+        '401':
+          description: Неверный логин или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Не удалось войти. Проверьте логин и пароль.
+                status_code: 401
+                code: invalid_credentials
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      operationId: refreshToken
+      summary: Обновить access-токен
+      description: |
+        Выдаёт новый access-токен по действующему refresh-токену.
+        Access-токен не требуется.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+            example:
+              refresh_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.refresh
+      responses:
+        '200':
+          description: Новый access-токен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefreshedToken'
+              example:
+                token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.access
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: Refresh-токен истёк, отозван или недействителен. Клиент завершает сессию.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Сессия истекла. Войдите снова.
+                status_code: 401
+                code: invalid_refresh_token
+  /auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      summary: Выйти
+      description: |
+        Отзывает refresh-токен. Отвечает `204` и для уже отозванного
+        или истёкшего токена. Access-токен не требуется.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+            example:
+              refresh_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.refresh
+      responses:
+        '204':
+          description: Сессия завершена
+        '400':
+          $ref: '#/components/responses/ValidationError'
+  /profile:
+    get:
+      tags: [Users]
+      operationId: getProfile
+      summary: Получить текущего пользователя
+      description: Возвращает имя для шапки и роль для выбора навигации.
+      responses:
+        '200':
+          description: Текущий пользователь
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+              examples:
+                user:
+                  summary: Пользователь
+                  value:
+                    id: 3f6c2a1e-5b7d-4c8e-9f10-2a3b4c5d6e7f
+                    name: Иван Иванов
+                    login: ivanov
+                    role: user
+                admin:
+                  summary: Администратор
+                  value:
+                    id: 9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d
+                    name: Пётр Петров
+                    login: admin
+                    role: admin
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /buildings:
+    get:
+      tags: [References]
+      operationId: listBuildings
+      summary: Получить справочник корпусов
+      description: Справочник ведётся вне API. Порядок — по названию.
+      responses:
+        '200':
+          description: Корпуса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildingList'
+              examples:
+                filled:
+                  summary: Есть корпуса
+                  value:
+                    items:
+                      - id: 1b2c3d4e-0000-4000-8000-000000000001
+                        name: Корпус 1
+                      - id: 1b2c3d4e-0000-4000-8000-000000000002
+                        name: Корпус 2
+                empty:
+                  summary: Справочник пуст
+                  value:
+                    items: []
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /equipment:
+    get:
+      tags: [References]
+      operationId: listEquipment
+      summary: Получить справочник оборудования
+      description: Справочник ведётся вне API. Порядок — по названию.
+      responses:
+        '200':
+          description: Виды оборудования
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EquipmentList'
+              examples:
+                filled:
+                  summary: Есть оборудование
+                  value:
+                    items:
+                      - id: 2c3d4e5f-0000-4000-8000-000000000001
+                        name: Интерактивная доска
+                      - id: 2c3d4e5f-0000-4000-8000-000000000002
+                        name: Компьютеры
+                      - id: 2c3d4e5f-0000-4000-8000-000000000003
+                        name: Микрофон
+                      - id: 2c3d4e5f-0000-4000-8000-000000000004
+                        name: Проектор
+                empty:
+                  summary: Справочник пуст
+                  value:
+                    items: []
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /rooms:
+    get:
+      tags: [Rooms]
+      operationId: listRooms
+      summary: Получить каталог аудиторий
+      description: |
+        Пользователь получает только опубликованные аудитории. Администратор
+        получает все, включая черновики. Порядок — по названию корпуса,
+        затем по номеру.
+      responses:
+        '200':
+          description: Аудитории
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomList'
+              examples:
+                filled:
+                  summary: Каталог
+                  value:
+                    items:
+                      - id: 4e5f6a7b-0000-4000-8000-000000000405
+                        number: '405'
+                        building:
+                          id: 1b2c3d4e-0000-4000-8000-000000000001
+                          name: Корпус 1
+                        floor: 4
+                        capacity: 30
+                        equipment:
+                          - id: 2c3d4e5f-0000-4000-8000-000000000001
+                            name: Интерактивная доска
+                          - id: 2c3d4e5f-0000-4000-8000-000000000004
+                            name: Проектор
+                        description: Светлая аудитория для консультаций, семинаров и встреч небольших учебных групп.
+                        photo_url: http://127.0.0.1:4001/public/rooms/5a6b7c8d9e0f4a1b.jpg
+                        status: published
+                      - id: 4e5f6a7b-0000-4000-8000-000000000407
+                        number: '407'
+                        building:
+                          id: 1b2c3d4e-0000-4000-8000-000000000001
+                          name: Корпус 1
+                        floor: 4
+                        capacity: 50
+                        equipment:
+                          - id: 2c3d4e5f-0000-4000-8000-000000000002
+                            name: Компьютеры
+                          - id: 2c3d4e5f-0000-4000-8000-000000000004
+                            name: Проектор
+                        description: null
+                        photo_url: null
+                        status: published
+                empty:
+                  summary: Каталог пуст
+                  value:
+                    items: []
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Rooms]
+      operationId: createRoom
+      summary: Добавить аудиторию
+      description: |
+        Только для администратора. Аудитория создаётся черновиком
+        (`status: draft`) и не видна пользователям до публикации.
+        Фотография загружается отдельно методом `PUT /rooms/{room_id}/photo`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoomCreate'
+            example:
+              number: '512'
+              building_id: 1b2c3d4e-0000-4000-8000-000000000001
+              floor: 5
+              capacity: 40
+              equipment_ids:
+                - 2c3d4e5f-0000-4000-8000-000000000004
+              description: Аудитория для занятий, консультаций и командной работы.
+      responses:
+        '201':
+          description: Черновик аудитории создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Room'
+              example:
+                id: 4e5f6a7b-0000-4000-8000-000000000512
+                number: '512'
+                building:
+                  id: 1b2c3d4e-0000-4000-8000-000000000001
+                  name: Корпус 1
+                floor: 5
+                capacity: 40
+                equipment:
+                  - id: 2c3d4e5f-0000-4000-8000-000000000004
+                    name: Проектор
+                description: Аудитория для занятий, консультаций и командной работы.
+                photo_url: null
+                status: draft
+        '400':
+          description: Ошибки полей
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidFields:
+                  summary: Пустой номер и нулевая вместимость
+                  value:
+                    message: Проверьте заполнение полей
+                    status_code: 400
+                    code: validation_error
+                    errors:
+                      - field: number
+                        message: Введите номер аудитории
+                      - field: capacity
+                        message: Введите число больше 0
+                unknownReference:
+                  summary: Корпус или оборудование не из справочника
+                  value:
+                    message: Проверьте заполнение полей
+                    status_code: 400
+                    code: validation_error
+                    errors:
+                      - field: building_id
+                        message: Выберите корпус из списка
+                      - field: equipment_ids
+                        message: Выберите оборудование из списка
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/RoomNumberTaken'
+  /rooms/{room_id}:
+    parameters:
+      - $ref: '#/components/parameters/RoomId'
+    get:
+      tags: [Rooms]
+      operationId: getRoom
+      summary: Получить карточку аудитории
+      description: |
+        Пользователь получает только опубликованную аудиторию, для черновика
+        возвращается `404`. Администратор получает любую.
+      responses:
+        '200':
+          description: Аудитория
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Room'
+              examples:
+                withEquipment:
+                  $ref: '#/components/examples/Room405'
+                withoutEquipment:
+                  summary: Оборудование не указано
+                  value:
+                    id: 4e5f6a7b-0000-4000-8000-000000000210
+                    number: '210'
+                    building:
+                      id: 1b2c3d4e-0000-4000-8000-000000000001
+                      name: Корпус 1
+                    floor: 2
+                    capacity: 30
+                    equipment: []
+                    description: null
+                    photo_url: null
+                    status: published
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /rooms/{room_id}/publish:
+    parameters:
+      - $ref: '#/components/parameters/RoomId'
+    post:
+      tags: [Rooms]
+      operationId: publishRoom
+      summary: Опубликовать аудиторию
+      description: |
+        Только для администратора. Делает аудиторию видимой в каталоге.
+        Повторная публикация не считается ошибкой и возвращает ту же аудиторию.
+      responses:
+        '200':
+          description: Аудитория опубликована
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Room'
+              example:
+                id: 4e5f6a7b-0000-4000-8000-000000000512
+                number: '512'
+                building:
+                  id: 1b2c3d4e-0000-4000-8000-000000000001
+                  name: Корпус 1
+                floor: 5
+                capacity: 40
+                equipment:
+                  - id: 2c3d4e5f-0000-4000-8000-000000000004
+                    name: Проектор
+                description: Аудитория для занятий, консультаций и командной работы.
+                photo_url: http://127.0.0.1:4001/public/rooms/8f1d2c3b4a5e4f60.jpg
+                status: published
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /rooms/{room_id}/photo:
+    parameters:
+      - $ref: '#/components/parameters/RoomId'
+    put:
+      tags: [Rooms]
+      operationId: uploadRoomPhoto
+      summary: Загрузить фотографию аудитории
+      description: |
+        Только для администратора. У аудитории одна фотография, новая
+        заменяет предыдущую. Принимаются JPG и PNG размером до 10 МБ.
+        Тип определяется по содержимому файла, а не по расширению.
+        Сервер может уменьшить изображение; ссылка возвращается в `photo_url`.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RoomPhotoUpload'
+            encoding:
+              file:
+                contentType: image/jpeg, image/png
+      responses:
+        '200':
+          description: Фотография сохранена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Room'
+              example:
+                id: 4e5f6a7b-0000-4000-8000-000000000512
+                number: '512'
+                building:
+                  id: 1b2c3d4e-0000-4000-8000-000000000001
+                  name: Корпус 1
+                floor: 5
+                capacity: 40
+                equipment:
+                  - id: 2c3d4e5f-0000-4000-8000-000000000004
+                    name: Проектор
+                description: Аудитория для занятий, консультаций и командной работы.
+                photo_url: http://127.0.0.1:4001/public/rooms/8f1d2c3b4a5e4f60.jpg
+                status: draft
+        '400':
+          description: Файл не передан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Проверьте заполнение полей
+                status_code: 400
+                code: validation_error
+                errors:
+                  - field: file
+                    message: Выберите файл
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          description: Файл больше 10 МБ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Файл должен быть не больше 10 МБ
+                status_code: 413
+                code: file_too_large
+                errors:
+                  - field: file
+                    message: Файл должен быть не больше 10 МБ
+        '415':
+          description: Файл не JPG и не PNG
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Загрузите изображение JPG или PNG
+                status_code: 415
+                code: unsupported_media_type
+                errors:
+                  - field: file
+                    message: Загрузите изображение JPG или PNG
+  /rooms/{room_id}/availability:
+    parameters:
+      - $ref: '#/components/parameters/RoomId'
+    get:
+      tags: [Schedule]
+      operationId: getRoomAvailability
+      summary: Получить занятость аудитории на дату
+      description: |
+        Возвращает все учебные периоды выбранной даты по порядку.
+        Статус определяется так:
+        - `lesson` — период занят учебным занятием, в том числе в прошлом;
+        - `past` — занятия нет, но начало периода уже наступило;
+        - `free` — период свободен.
+
+        Пользователь получает занятость только опубликованной аудитории,
+        для черновика возвращается `404`.
+      parameters:
+        - name: date
+          in: query
+          required: true
+          description: Дата по часовому поясу `Asia/Tomsk`.
+          schema:
+            type: string
+            format: date
+          example: '2026-10-22'
+      responses:
+        '200':
+          description: Занятость по учебным периодам
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomAvailability'
+              examples:
+                withLesson:
+                  summary: Есть учебное занятие
+                  value:
+                    room_id: 4e5f6a7b-0000-4000-8000-000000000405
+                    date: '2026-10-22'
+                    periods:
+                      - period:
+                          id: 3d4e5f6a-0000-4000-8000-000000000001
+                          order: 1
+                          start_time: '08:50'
+                          end_time: '10:25'
+                        status: lesson
+                        lesson:
+                          id: 5f6a7b8c-0000-4000-8000-000000000001
+                          subject: Технология программирования
+                          group: 432-1
+                          teacher: Петров П. П.
+                      - period:
+                          id: 3d4e5f6a-0000-4000-8000-000000000002
+                          order: 2
+                          start_time: '10:40'
+                          end_time: '12:15'
+                        status: free
+                        lesson: null
+                      - period:
+                          id: 3d4e5f6a-0000-4000-8000-000000000003
+                          order: 3
+                          start_time: '13:15'
+                          end_time: '14:50'
+                        status: free
+                        lesson: null
+                      - period:
+                          id: 3d4e5f6a-0000-4000-8000-000000000004
+                          order: 4
+                          start_time: '15:00'
+                          end_time: '16:35'
+                        status: free
+                        lesson: null
+                allFree:
+                  summary: День без учебных занятий
+                  value:
+                    room_id: 4e5f6a7b-0000-4000-8000-000000000405
+                    date: '2026-10-24'
+                    periods:
+                      - period:
+                          id: 3d4e5f6a-0000-4000-8000-000000000001
+                          order: 1
+                          start_time: '08:50'
+                          end_time: '10:25'
+                        status: free
+                        lesson: null
+                      - period:
+                          id: 3d4e5f6a-0000-4000-8000-000000000002
+                          order: 2
+                          start_time: '10:40'
+                          end_time: '12:15'
+                        status: free
+                        lesson: null
+                pastDate:
+                  summary: Прошедшая дата
+                  value:
+                    room_id: 4e5f6a7b-0000-4000-8000-000000000405
+                    date: '2026-10-01'
+                    periods:
+                      - period:
+                          id: 3d4e5f6a-0000-4000-8000-000000000001
+                          order: 1
+                          start_time: '08:50'
+                          end_time: '10:25'
+                        status: lesson
+                        lesson:
+                          id: 5f6a7b8c-0000-4000-8000-000000000001
+                          subject: Технология программирования
+                          group: 432-1
+                          teacher: Петров П. П.
+                      - period:
+                          id: 3d4e5f6a-0000-4000-8000-000000000002
+                          order: 2
+                          start_time: '10:40'
+                          end_time: '12:15'
+                        status: past
+                        lesson: null
+                noPeriods:
+                  summary: Справочник периодов пуст
+                  value:
+                    room_id: 4e5f6a7b-0000-4000-8000-000000000405
+                    date: '2026-10-22'
+                    periods: []
+        '400':
+          description: Дата не передана или некорректна
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Проверьте заполнение полей
+                status_code: 400
+                code: validation_error
+                errors:
+                  - field: date
+                    message: Укажите дату в формате ГГГГ-ММ-ДД
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /periods:
+    get:
+      tags: [Schedule]
+      operationId: listPeriods
+      summary: Получить справочник учебных периодов
+      description: Справочник ведётся вне API. Порядок — по полю `order`.
+      responses:
+        '200':
+          description: Учебные периоды
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TeachingPeriodList'
+              examples:
+                filled:
+                  summary: Периоды дня
+                  value:
+                    items:
+                      - id: 3d4e5f6a-0000-4000-8000-000000000001
+                        order: 1
+                        start_time: '08:50'
+                        end_time: '10:25'
+                      - id: 3d4e5f6a-0000-4000-8000-000000000002
+                        order: 2
+                        start_time: '10:40'
+                        end_time: '12:15'
+                      - id: 3d4e5f6a-0000-4000-8000-000000000003
+                        order: 3
+                        start_time: '13:15'
+                        end_time: '14:50'
+                      - id: 3d4e5f6a-0000-4000-8000-000000000004
+                        order: 4
+                        start_time: '15:00'
+                        end_time: '16:35'
+                empty:
+                  summary: Справочник пуст
+                  value:
+                    items: []
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /lessons:
+    get:
+      tags: [Schedule]
+      operationId: listLessons
+      summary: Получить глобальное учебное расписание
+      description: Порядок — по дню недели, учебному периоду, корпусу и номеру аудитории.
+      responses:
+        '200':
+          description: Занятия
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LessonList'
+              examples:
+                filled:
+                  summary: Есть занятия
+                  value:
+                    items:
+                      - id: 5f6a7b8c-0000-4000-8000-000000000001
+                        room:
+                          id: 4e5f6a7b-0000-4000-8000-000000000405
+                          number: '405'
+                          building:
+                            id: 1b2c3d4e-0000-4000-8000-000000000001
+                            name: Корпус 1
+                        period:
+                          id: 3d4e5f6a-0000-4000-8000-000000000001
+                          order: 1
+                          start_time: '08:50'
+                          end_time: '10:25'
+                        weekday: 4
+                        week_parity: every
+                        starts_on: '2026-09-01'
+                        ends_on: '2026-12-30'
+                        subject: Технология программирования
+                        group: 432-1
+                        teacher: Петров П. П.
+                      - id: 5f6a7b8c-0000-4000-8000-000000000002
+                        room:
+                          id: 4e5f6a7b-0000-4000-8000-000000000407
+                          number: '407'
+                          building:
+                            id: 1b2c3d4e-0000-4000-8000-000000000001
+                            name: Корпус 1
+                        period:
+                          id: 3d4e5f6a-0000-4000-8000-000000000003
+                          order: 3
+                          start_time: '13:15'
+                          end_time: '14:50'
+                        weekday: 5
+                        week_parity: even
+                        starts_on: '2026-09-01'
+                        ends_on: '2026-12-30'
+                        subject: null
+                        group: null
+                        teacher: null
+                empty:
+                  summary: Расписание пусто
+                  value:
+                    items: []
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Schedule]
+      operationId: createLesson
+      summary: Добавить занятие
+      description: |
+        Только для администратора. Занятие не должно пересекаться с другими
+        занятиями в той же аудитории.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LessonWrite'
+            example:
+              room_id: 4e5f6a7b-0000-4000-8000-000000000405
+              period_id: 3d4e5f6a-0000-4000-8000-000000000001
+              weekday: 4
+              week_parity: every
+              starts_on: '2026-09-01'
+              ends_on: '2026-12-30'
+              subject: Технология программирования
+              group: 432-1
+              teacher: Петров П. П.
+      responses:
+        '201':
+          description: Занятие добавлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Lesson'
+              examples:
+                created:
+                  $ref: '#/components/examples/Lesson'
+        '400':
+          $ref: '#/components/responses/LessonValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/LessonConflict'
+  /lessons/{lesson_id}:
+    parameters:
+      - $ref: '#/components/parameters/LessonId'
+    get:
+      tags: [Schedule]
+      operationId: getLesson
+      summary: Получить занятие
+      responses:
+        '200':
+          description: Занятие
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Lesson'
+              examples:
+                lesson:
+                  $ref: '#/components/examples/Lesson'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Schedule]
+      operationId: updateLesson
+      summary: Изменить занятие
+      description: |
+        Только для администратора. Заменяет все поля занятия. Само изменяемое
+        занятие не учитывается при проверке пересечений.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LessonWrite'
+            example:
+              room_id: 4e5f6a7b-0000-4000-8000-000000000405
+              period_id: 3d4e5f6a-0000-4000-8000-000000000002
+              weekday: 4
+              week_parity: odd
+              starts_on: '2026-09-01'
+              ends_on: '2026-12-30'
+              subject: Технология программирования
+              group: 432-1
+              teacher: Петров П. П.
+      responses:
+        '200':
+          description: Занятие изменено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Lesson'
+              example:
+                id: 5f6a7b8c-0000-4000-8000-000000000001
+                room:
+                  id: 4e5f6a7b-0000-4000-8000-000000000405
+                  number: '405'
+                  building:
+                    id: 1b2c3d4e-0000-4000-8000-000000000001
+                    name: Корпус 1
+                period:
+                  id: 3d4e5f6a-0000-4000-8000-000000000002
+                  order: 2
+                  start_time: '10:40'
+                  end_time: '12:15'
+                weekday: 4
+                week_parity: odd
+                starts_on: '2026-09-01'
+                ends_on: '2026-12-30'
+                subject: Технология программирования
+                group: 432-1
+                teacher: Петров П. П.
+        '400':
+          $ref: '#/components/responses/LessonValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/LessonConflict'
+    delete:
+      tags: [Schedule]
+      operationId: deleteLesson
+      summary: Удалить занятие
+      description: Только для администратора.
+      responses:
+        '204':
+          description: Занятие удалено
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    RoomId:
+      name: room_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    LessonId:
+      name: lesson_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  examples:
+    Lesson:
+      summary: Занятие по четвергам
+      value:
+        id: 5f6a7b8c-0000-4000-8000-000000000001
+        room:
+          id: 4e5f6a7b-0000-4000-8000-000000000405
+          number: '405'
+          building:
+            id: 1b2c3d4e-0000-4000-8000-000000000001
+            name: Корпус 1
+        period:
+          id: 3d4e5f6a-0000-4000-8000-000000000001
+          order: 1
+          start_time: '08:50'
+          end_time: '10:25'
+        weekday: 4
+        week_parity: every
+        starts_on: '2026-09-01'
+        ends_on: '2026-12-30'
+        subject: Технология программирования
+        group: 432-1
+        teacher: Петров П. П.
+    Room405:
+      summary: Аудитория с оборудованием
+      value:
+        id: 4e5f6a7b-0000-4000-8000-000000000405
+        number: '405'
+        building:
+          id: 1b2c3d4e-0000-4000-8000-000000000001
+          name: Корпус 1
+        floor: 4
+        capacity: 30
+        equipment:
+          - id: 2c3d4e5f-0000-4000-8000-000000000001
+            name: Интерактивная доска
+          - id: 2c3d4e5f-0000-4000-8000-000000000004
+            name: Проектор
+        description: Светлая аудитория для консультаций, семинаров и встреч небольших учебных групп.
+        photo_url: http://127.0.0.1:4001/public/rooms/5a6b7c8d9e0f4a1b.jpg
+        status: published
+  schemas:
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          const: ok
+    Role:
+      type: string
+      enum: [user, admin]
+      description: Роль пользователя. Назначается только сервером.
+    Name:
+      type: string
+      minLength: 1
+      maxLength: 50
+      pattern: '^[A-Za-zА-ЯЁа-яё\- ]+$'
+      description: Имя для отображения. Буквы, пробел и дефис.
+    Login:
+      type: string
+      minLength: 3
+      maxLength: 32
+      pattern: '^[A-Za-z0-9._-]+$'
+      description: Уникальный логин. Сравнивается без учёта регистра.
+    Password:
+      type: string
+      minLength: 8
+      maxLength: 16
+      pattern: '^[A-Za-z0-9!#$%&*+\-.<=>?@^_]+$'
+      description: Латинские буквы, цифры и символы `!#$%&*+-.<=>?@^_`.
+    User:
+      type: object
+      required: [id, name, login, role]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          $ref: '#/components/schemas/Name'
+        login:
+          $ref: '#/components/schemas/Login'
+        role:
+          $ref: '#/components/schemas/Role'
+    RegisterRequest:
+      type: object
+      required: [name, login, password, confirm_password]
+      additionalProperties: false
+      properties:
+        name:
+          $ref: '#/components/schemas/Name'
+        login:
+          $ref: '#/components/schemas/Login'
+        password:
+          $ref: '#/components/schemas/Password'
+        confirm_password:
+          type: string
+          description: Должен совпадать с `password`.
+    LoginRequest:
+      type: object
+      required: [login, password]
+      properties:
+        login:
+          type: string
+          minLength: 1
+        password:
+          type: string
+          minLength: 1
+    SignedUser:
+      type: object
+      required: [user, token, refresh_token]
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        token:
+          type: string
+          description: Access-токен, действует 30 минут.
+        refresh_token:
+          type: string
+          description: Refresh-токен, действует 30 дней.
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+          minLength: 1
+    RefreshedToken:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          description: Новый access-токен.
+    Building:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: Название для показа, например «Корпус 1».
+    BuildingList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Building'
+    Equipment:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+    EquipmentList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Equipment'
+    RoomStatus:
+      type: string
+      enum: [draft, published]
+      description: |
+        `draft` — черновик, виден только администратору.
+        `published` — опубликована, видна в каталоге.
+    RoomNumber:
+      type: string
+      minLength: 1
+      maxLength: 20
+      description: Номер аудитории, уникален в пределах корпуса без учёта регистра.
+    Room:
+      type: object
+      required: [id, number, building, floor, capacity, equipment, description, photo_url, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        number:
+          $ref: '#/components/schemas/RoomNumber'
+        building:
+          $ref: '#/components/schemas/Building'
+        floor:
+          type: integer
+        capacity:
+          type: integer
+          minimum: 1
+          description: Количество мест.
+        equipment:
+          type: array
+          description: Пустой список означает, что оборудование не указано.
+          items:
+            $ref: '#/components/schemas/Equipment'
+        description:
+          type: [string, 'null']
+          maxLength: 1000
+        photo_url:
+          type: [string, 'null']
+          format: uri
+          description: Абсолютная ссылка на фотографию или `null`, если её нет.
+        status:
+          $ref: '#/components/schemas/RoomStatus'
+    RoomList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Room'
+    RoomCreate:
+      type: object
+      required: [number, building_id, floor, capacity]
+      additionalProperties: false
+      properties:
+        number:
+          $ref: '#/components/schemas/RoomNumber'
+        building_id:
+          type: string
+          format: uuid
+          description: Корпус из `GET /buildings`.
+        floor:
+          type: integer
+          minimum: -5
+          maximum: 50
+        capacity:
+          type: integer
+          minimum: 1
+          maximum: 1000
+        equipment_ids:
+          type: array
+          uniqueItems: true
+          default: []
+          description: Оборудование из `GET /equipment`.
+          items:
+            type: string
+            format: uuid
+        description:
+          type: [string, 'null']
+          maxLength: 1000
+    RoomPhotoUpload:
+      type: object
+      required: [file]
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          description: Изображение JPG или PNG до 10 МБ.
+    Time:
+      type: string
+      pattern: '^([01]\d|2[0-3]):[0-5]\d$'
+      description: Время `HH:MM` по часовому поясу `Asia/Tomsk`.
+    TeachingPeriod:
+      type: object
+      required: [id, order, start_time, end_time]
+      properties:
+        id:
+          type: string
+          format: uuid
+        order:
+          type: integer
+          minimum: 1
+          description: Порядковый номер периода в дне.
+        start_time:
+          $ref: '#/components/schemas/Time'
+        end_time:
+          $ref: '#/components/schemas/Time'
+    TeachingPeriodList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TeachingPeriod'
+    Weekday:
+      type: integer
+      minimum: 1
+      maximum: 7
+      description: День недели по ISO 8601, 1 — понедельник, 7 — воскресенье.
+    WeekParity:
+      type: string
+      enum: [every, odd, even]
+      description: |
+        `every` — каждую неделю, `odd` — по нечётным, `even` — по чётным неделям
+        учебного года.
+    LessonText:
+      type: [string, 'null']
+      minLength: 1
+      maxLength: 200
+    RoomSummary:
+      type: object
+      required: [id, number, building]
+      properties:
+        id:
+          type: string
+          format: uuid
+        number:
+          $ref: '#/components/schemas/RoomNumber'
+        building:
+          $ref: '#/components/schemas/Building'
+    Lesson:
+      type: object
+      required: [id, room, period, weekday, week_parity, starts_on, ends_on, subject, group, teacher]
+      properties:
+        id:
+          type: string
+          format: uuid
+        room:
+          $ref: '#/components/schemas/RoomSummary'
+        period:
+          $ref: '#/components/schemas/TeachingPeriod'
+        weekday:
+          $ref: '#/components/schemas/Weekday'
+        week_parity:
+          $ref: '#/components/schemas/WeekParity'
+        starts_on:
+          type: string
+          format: date
+        ends_on:
+          type: string
+          format: date
+        subject:
+          $ref: '#/components/schemas/LessonText'
+        group:
+          $ref: '#/components/schemas/LessonText'
+        teacher:
+          $ref: '#/components/schemas/LessonText'
+    LessonList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Lesson'
+    LessonWrite:
+      type: object
+      required: [room_id, period_id, weekday, week_parity, starts_on, ends_on]
+      additionalProperties: false
+      properties:
+        room_id:
+          type: string
+          format: uuid
+          description: Аудитория, в том числе черновик.
+        period_id:
+          type: string
+          format: uuid
+          description: Учебный период из `GET /periods`.
+        weekday:
+          $ref: '#/components/schemas/Weekday'
+        week_parity:
+          $ref: '#/components/schemas/WeekParity'
+        starts_on:
+          type: string
+          format: date
+          description: Первая дата действия занятия.
+        ends_on:
+          type: string
+          format: date
+          description: Последняя дата действия занятия, не раньше `starts_on`.
+        subject:
+          $ref: '#/components/schemas/LessonText'
+        group:
+          $ref: '#/components/schemas/LessonText'
+        teacher:
+          $ref: '#/components/schemas/LessonText'
+    LessonBrief:
+      type: object
+      required: [id, subject, group, teacher]
+      properties:
+        id:
+          type: string
+          format: uuid
+        subject:
+          $ref: '#/components/schemas/LessonText'
+        group:
+          $ref: '#/components/schemas/LessonText'
+        teacher:
+          $ref: '#/components/schemas/LessonText'
+    AvailabilityStatus:
+      type: string
+      enum: [free, lesson, past]
+      description: |
+        `free` — свободно, `lesson` — учебное занятие, `past` — период уже начался
+        или прошёл. Список может расширяться.
+    PeriodAvailability:
+      type: object
+      required: [period, status, lesson]
+      properties:
+        period:
+          $ref: '#/components/schemas/TeachingPeriod'
+        status:
+          $ref: '#/components/schemas/AvailabilityStatus'
+        lesson:
+          description: Занятие при статусе `lesson`, иначе `null`.
+          oneOf:
+            - $ref: '#/components/schemas/LessonBrief'
+            - type: 'null'
+    RoomAvailability:
+      type: object
+      required: [room_id, date, periods]
+      properties:
+        room_id:
+          type: string
+          format: uuid
+        date:
+          type: string
+          format: date
+        periods:
+          type: array
+          items:
+            $ref: '#/components/schemas/PeriodAvailability'
+    LessonConflictError:
+      allOf:
+        - $ref: '#/components/schemas/Error'
+        - type: object
+          required: [conflicts]
+          properties:
+            conflicts:
+              type: array
+              description: Занятия, с которыми пересекается новое или изменённое.
+              items:
+                $ref: '#/components/schemas/Lesson'
+    FieldError:
+      type: object
+      required: [field, message]
+      properties:
+        field:
+          type: string
+          description: Имя поля запроса.
+        message:
+          type: string
+          description: Сообщение для показа рядом с полем.
+    Error:
+      type: object
+      required: [message, status_code, code]
+      properties:
+        message:
+          type: string
+          description: Сообщение для пользователя.
+        status_code:
+          type: integer
+          description: Дублирует HTTP-статус.
+        code:
+          type: string
+          description: |
+            Машиночитаемый код ошибки: `validation_error`, `not_authenticated`,
+            `invalid_token`, `token_expired`, `invalid_credentials`,
+            `invalid_refresh_token`, `forbidden`, `not_found`, `login_taken`,
+            `room_number_taken`, `file_too_large`, `unsupported_media_type`,
+            `lesson_conflict`.
+        errors:
+          type: array
+          description: Ошибки отдельных полей. Есть только у `validation_error` и ошибок дублей.
+          items:
+            $ref: '#/components/schemas/FieldError'
+  responses:
+    ValidationError:
+      description: Ошибки полей
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            message: Проверьте заполнение полей
+            status_code: 400
+            code: validation_error
+            errors:
+              - field: refresh_token
+                message: Обязательное поле
+    Unauthorized:
+      description: Нет действующего access-токена
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            notAuthenticated:
+              summary: Токен не передан
+              value:
+                message: Требуется вход в систему
+                status_code: 401
+                code: not_authenticated
+            tokenExpired:
+              summary: Токен истёк
+              value:
+                message: Сессия истекла
+                status_code: 401
+                code: token_expired
+            invalidToken:
+              summary: Токен недействителен
+              value:
+                message: Ошибка авторизации
+                status_code: 401
+                code: invalid_token
+    Forbidden:
+      description: Недостаточно прав
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            message: Нет доступа
+            status_code: 403
+            code: forbidden
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            message: Не найдено
+            status_code: 404
+            code: not_found
+    RoomNumberTaken:
+      description: Аудитория с таким номером уже есть в выбранном корпусе
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            message: Такой номер уже есть в корпусе
+            status_code: 409
+            code: room_number_taken
+            errors:
+              - field: number
+                message: Такой номер уже есть в корпусе
+    LessonValidationError:
+      description: Ошибки полей занятия
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            invalidDates:
+              summary: Дата окончания раньше даты начала
+              value:
+                message: Проверьте заполнение полей
+                status_code: 400
+                code: validation_error
+                errors:
+                  - field: ends_on
+                    message: Дата окончания не может быть раньше даты начала
+            unknownReference:
+              summary: Аудитория или период не найдены
+              value:
+                message: Проверьте заполнение полей
+                status_code: 400
+                code: validation_error
+                errors:
+                  - field: room_id
+                    message: Выберите аудиторию из списка
+                  - field: period_id
+                    message: Выберите учебный период из списка
+    LessonConflict:
+      description: Занятие пересекается с другим занятием в этой аудитории
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/LessonConflictError'
+          example:
+            message: В это время аудитория уже занята учебным занятием
+            status_code: 409
+            code: lesson_conflict
+            conflicts:
+              - id: 5f6a7b8c-0000-4000-8000-000000000001
+                room:
+                  id: 4e5f6a7b-0000-4000-8000-000000000405
+                  number: '405'
+                  building:
+                    id: 1b2c3d4e-0000-4000-8000-000000000001
+                    name: Корпус 1
+                period:
+                  id: 3d4e5f6a-0000-4000-8000-000000000001
+                  order: 1
+                  start_time: '08:50'
+                  end_time: '10:25'
+                weekday: 4
+                week_parity: every
+                starts_on: '2026-09-01'
+                ends_on: '2026-12-30'
+                subject: Технология программирования
+                group: 432-1
+                teacher: Петров П. П.
