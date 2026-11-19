@@ -37,7 +37,16 @@ export function isOddWeek(date: string) {
   return number % 2 === 1;
 }
 
-export function occursOn(lesson: Lesson, date: string) {
+type Recurrence = Pick<Lesson, 'weekday' | 'week_parity' | 'starts_on' | 'ends_on'>;
+
+export function firstOccurrence(lesson: Recurrence) {
+  for (let date = lesson.starts_on, step = 0; date <= lesson.ends_on && step < 15; date = addDays(date, 1), step += 1) {
+    if (occursOn(lesson, date)) return date;
+  }
+  return null;
+}
+
+export function occursOn(lesson: Recurrence, date: string) {
   if (date < lesson.starts_on || date > lesson.ends_on) return false;
   if (weekday(date) !== lesson.weekday) return false;
   if (lesson.week_parity === 'every') return true;

@@ -50,6 +50,10 @@ export const scheduleApi = {
     const { data } = await api.get<{ items: Lesson[] }>('/lessons', { signal });
     return data.items;
   },
+  async lesson(id: string, signal: AbortSignal) {
+    const { data } = await api.get<Lesson>(`/lessons/${encodeURIComponent(id)}`, { signal });
+    return data;
+  },
   async create(lesson: LessonWrite) {
     const { data } = await api.post<Lesson>('/lessons', lesson);
     return data;

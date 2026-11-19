@@ -1,12 +1,13 @@
-import { useSearchParams } from 'react-router';
-import { primaryButton, StatePanel } from '../../ui';
+import { Link, useSearchParams } from 'react-router';
+import { useSession } from '../../session';
+import { primaryButton, secondaryButton, StatePanel } from '../../ui';
 import { classroomsApi, type Classroom } from '../classrooms/api';
 import { useRequest } from '../classrooms/use-request';
 import { periodTime, scheduleApi, type Lesson, type Period } from './api';
 import { addDays, formatDate, occursOn, today } from './dates';
 
-const secondaryButton =
-  'inline-flex h-12 cursor-pointer items-center justify-center rounded-[10px] border border-line bg-white px-4 text-sm text-ink outline-accent hover:bg-page focus-visible:outline-2 focus-visible:outline-offset-2';
+const cellLink =
+  'block h-full rounded-[10px] outline-accent focus-visible:outline-2 focus-visible:outline-offset-2 [&>div]:hover:border-accent [&>div]:hover:border-solid';
 
 interface ScheduleData {
   rooms: Classroom[];
@@ -50,13 +51,13 @@ function DatePicker({ date, onChange }: { date: string; onChange: (date: string)
           className="h-12 rounded-[10px] border border-line bg-white px-3 text-sm text-ink outline-none focus:border-accent focus:ring-3 focus:ring-accent/20"
         />
       </label>
-      <button type="button" aria-label="Предыдущий день" onClick={() => onChange(addDays(date, -1))} className={`${secondaryButton} w-12 px-0`}>
+      <button type="button" aria-label="Предыдущий день" onClick={() => onChange(addDays(date, -1))} className={`${secondaryButton} h-12 w-12 px-0`}>
         <Arrow back />
       </button>
-      <button type="button" aria-label="Следующий день" onClick={() => onChange(addDays(date, 1))} className={`${secondaryButton} w-12 px-0`}>
+      <button type="button" aria-label="Следующий день" onClick={() => onChange(addDays(date, 1))} className={`${secondaryButton} h-12 w-12 px-0`}>
         <Arrow />
       </button>
-      <button type="button" disabled={date === today()} onClick={() => onChange(today())} className={`${secondaryButton} disabled:cursor-default disabled:text-muted disabled:hover:bg-white`}>
+      <button type="button" disabled={date === today()} onClick={() => onChange(today())} className={`${secondaryButton} h-12`}>
         Сегодня
       </button>
     </div>
@@ -81,7 +82,7 @@ function FreeCell() {
   );
 }
 
-function ScheduleTable({ data, date }: { data: ScheduleData; date: string }) {
+function ScheduleTable({ data, date, editable }: { data: ScheduleData; date: string; editable: boolean }) {
   const lessons = data.lessons.filter((lesson) => occursOn(lesson, date));
   const lessonAt = (room: Classroom, period: Period) =>
     lessons.find((lesson) => lesson.room.id === room.id && lesson.period.id === period.id);
@@ -124,9 +125,29 @@ function ScheduleTable({ data, date }: { data: ScheduleData; date: string }) {
                 </th>
                 {data.periods.map((period) => {
                   const lesson = lessonAt(room, period);
+                  const place = `Ауд. ${room.number}, ${periodTime(period)}`;
+                  const cell = lesson ? <LessonCell lesson={lesson} /> : <FreeCell />;
                   return (
                     <td key={period.id} className="h-[76px] px-2 py-2 align-top last:pr-6">
-                      {lesson ? <LessonCell lesson={lesson} /> : <FreeCell />}
+                      {!editable ? (
+                        cell
+                      ) : lesson ? (
+                        <Link
+                          to={`/schedule/${encodeURIComponent(lesson.id)}/edit?date=${date}`}
+                          aria-label={`Изменить занятие: ${lesson.subject ?? 'учебное занятие'}, ${place}`}
+                          className={cellLink}
+                        >
+                          {cell}
+                        </Link>
+                      ) : (
+                        <Link
+                          to={`/schedule/new?date=${date}&room=${encodeURIComponent(room.id)}&period=${encodeURIComponent(period.id)}`}
+                          aria-label={`Добавить занятие: ${place}`}
+                          className={cellLink}
+                        >
+                          {cell}
+                        </Link>
+                      )}
                     </td>
                   );
                 })}
@@ -162,13 +183,23 @@ export function SchedulePage() {
   const param = params.get('date');
   const date = isDate(param) ? param : today();
   const { result, retry } = useRequest(loadSchedule);
+  const isAdmin = useSession((state) => state.user?.role === 'admin');
 
   const changeDate = (value: string) => setParams({ date: value }, { replace: true });
 
   return (
     <>
-      <h1 className="text-[32px] leading-10 font-bold">Расписание</h1>
-      <p className="mt-2 text-sm leading-[22px] text-muted first-letter:uppercase">{formatDate(date)}</p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-[32px] leading-10 font-bold">Расписание</h1>
+          <p className="mt-2 text-sm leading-[22px] text-muted first-letter:uppercase">{formatDate(date)}</p>
+        </div>
+        {isAdmin && (
+          <Link to={`/schedule/new?date=${date}`} className={`${primaryButton} mt-[13px]`}>
+            Добавить занятие
+          </Link>
+        )}
+      </div>
       <div className="mt-8">
         <DatePicker date={date} onChange={changeDate} />
       </div>
@@ -193,7 +224,7 @@ export function SchedulePage() {
               <StatePanel title="Аудитории пока не добавлены" text="Расписание появится после добавления аудиторий администратором." />
             </div>
           ) : (
-            <ScheduleTable data={result.data} date={date} />
+            <ScheduleTable data={result.data} date={date} editable={isAdmin} />
           )}
         </>
       )}
