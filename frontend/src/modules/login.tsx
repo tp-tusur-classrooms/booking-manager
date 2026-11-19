@@ -3,7 +3,7 @@ import { useState, type FormEvent, type InputHTMLAttributes } from 'react';
 import { Navigate, useLocation } from 'react-router';
 import classroom from '../assets/classroom.png';
 import logo from '../assets/logo.svg';
-import { useSession, type Role } from '../session';
+import { homeByRole, useSession } from '../session';
 
 type FieldName = 'login' | 'password';
 
@@ -13,8 +13,6 @@ interface Notice {
   text: string;
   fields?: FieldName[];
 }
-
-const homeByRole: Record<Role, string> = { user: '/', admin: '/admin' };
 
 const expiredNotice: Notice = {
   tone: 'warning',

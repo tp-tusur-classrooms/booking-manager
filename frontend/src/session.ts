@@ -3,6 +3,8 @@ import { api, onSessionExpired, tokens } from './api';
 
 export type Role = 'user' | 'admin';
 
+export const homeByRole: Record<Role, string> = { user: '/', admin: '/admin' };
+
 export interface User {
   id: string;
   name: string;
