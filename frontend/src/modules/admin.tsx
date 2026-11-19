@@ -3,6 +3,11 @@ import { Link, Route, Routes, useLocation, useParams } from 'react-router';
 import { classroomsApi, requestStatus } from './classrooms/api';
 import { useRequest } from './classrooms/use-request';
 
+const statusBadge = {
+  published: { label: 'Опубликована', className: 'bg-[#e7f3ed] text-[#246447]' },
+  draft: { label: 'Черновик', className: 'bg-line text-ink' },
+};
+
 const panel = 'rounded-2xl border border-[#e4e4ea] bg-white p-6';
 const button = 'inline-flex rounded-[10px] bg-[#6952b3] px-[18px] py-3 text-sm font-medium text-white hover:bg-[#574198]';
 
@@ -38,25 +43,30 @@ function ClassroomList() {
       <section aria-label="Список аудиторий" className={panel}>
         {result.status === 'loading' && <p role="status">Загрузка аудиторий…</p>}
         {result.status === 'error' && <RequestFailure retry={retry}>Не удалось загрузить аудитории.</RequestFailure>}
-        {result.status === 'ready' && (!result.data.some((room) => room.status === 'published') ? (
+        {result.status === 'ready' && (result.data.length === 0 ? (
           <p>Список пока пуст. Добавьте первую аудиторию.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[680px] text-left text-sm">
+            <table className="w-full min-w-[800px] text-left text-sm">
               <thead className="border-b border-[#e4e4ea] text-xs text-[#626674]">
                 <tr>
-                  {['Аудитория', 'Расположение', 'Мест', 'Оборудование', 'Действия'].map((label) => (
+                  {['Аудитория', 'Расположение', 'Мест', 'Оборудование', 'Статус', 'Действия'].map((label) => (
                     <th key={label} scope="col" className="py-4 pr-4 font-medium">{label}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#e4e4ea]">
-                {result.data.filter((room) => room.status === 'published').map((room) => (
+                {result.data.map((room) => (
                   <tr key={room.id}>
                     <th scope="row" className="py-5 pr-4 font-medium">Ауд. {room.number}</th>
                     <td className="pr-4">{room.building.name} · {room.floor} этаж</td>
                     <td className="pr-4">{room.capacity}</td>
                     <td className="pr-4">{room.equipment.map(({ name }) => name).join(', ') || 'Не указано'}</td>
+                    <td className="pr-4">
+                      <span className={`inline-flex h-[26px] items-center rounded-full px-2.5 text-xs whitespace-nowrap ${statusBadge[room.status].className}`}>
+                        {statusBadge[room.status].label}
+                      </span>
+                    </td>
                     <td className="py-5">
                       <Link to={encodeURIComponent(room.id)} aria-label={`Посмотреть аудиторию ${room.number}`}
                         className="inline-flex rounded-[10px] border border-[#e4e4ea] px-[18px] py-2.5 hover:bg-[#f7f7f9]">
