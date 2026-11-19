@@ -2,6 +2,7 @@ import { useCallback, type ReactNode } from 'react';
 import { Link, Route, Routes, useLocation, useParams } from 'react-router';
 import { classroomsApi, requestStatus } from './classrooms/api';
 import { useRequest } from './classrooms/use-request';
+import { ClassroomCreate } from './classrooms/create';
 
 const statusBadge = {
   published: { label: 'Опубликована', className: 'bg-[#e7f3ed] text-[#246447]' },
@@ -120,7 +121,7 @@ export function AdminPage() {
   return (
     <Routes>
       <Route index element={<ClassroomList />} />
-      <Route path="new" element={<p>Форма добавления пока недоступна. <Link to="/admin" className="underline">К списку</Link></p>} />
+      <Route path="new" element={<ClassroomCreate />} />
       <Route path=":id" element={<ClassroomDetails />} />
     </Routes>
   );
