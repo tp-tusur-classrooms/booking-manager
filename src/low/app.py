@@ -104,6 +104,11 @@ class App:
                 "name": "Users",
                 "description": "Профили пользователей",
             },
+            {
+                "name": "References",
+                "description": "Справочники корпусов и оборудования",
+            },
+            {"name": "Rooms", "description": "Каталог и управление аудиториями"},
         ]
 
         # Включаем BearerAuth (JWT) на securitySchemes
