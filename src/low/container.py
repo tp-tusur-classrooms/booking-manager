@@ -4,6 +4,8 @@ from dependency_injector.providers import Object
 from src.domain.common import models
 from src.domain.file.repositories import FileMetadataRepository, FileRepository
 from src.domain.file.services import ImageFileService
+from src.domain.rooms.repositories import RoomRepository
+from src.domain.rooms.services import RoomService
 from src.domain.security.services import HasherService, TokenService
 from src.domain.token.repositories import TokenRepository
 from src.domain.users.repositories import UserRepository
@@ -69,6 +71,15 @@ class Container(containers.DeclarativeContainer):
     )
 
     # СЛОЙ 3: Сервисы домена
+    room_repository = providers.Factory(RoomRepository, session=session)
+    room_service = providers.Factory(
+        RoomService,
+        uow=uow,
+        room_repository=room_repository,
+        file_repository=file_repository,
+        public_url=config.provided.files.public_url,
+    )
+
     image_file_service = providers.Factory(
         ImageFileService,
         public_url=config.provided.files.public_url,
@@ -106,5 +117,6 @@ async def setup_container(config: ModulesConfig, creds: ModulesCreds) -> None:
             "src.api.v1.auth",
             "src.api.v1.user",
             "src.api.v1.common",
+            "src.api.v1.rooms",
         ]
     )

@@ -3,7 +3,7 @@ import uuid
 
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql.functions import now
 
 
@@ -60,3 +60,56 @@ class RevokedRefreshToken(Base):
 
     # В id хранится идентификатор jti из JWT, а не сам токен.
     expires_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+
+
+class Building(Base):
+    __tablename__ = "building"
+
+    name: Mapped[str] = mapped_column(sa.String(255), unique=True)
+
+
+class Equipment(Base):
+    __tablename__ = "equipment"
+
+    name: Mapped[str] = mapped_column(sa.String(255), unique=True)
+
+
+room_equipment = sa.Table(
+    "room_equipment",
+    Base.metadata,
+    sa.Column(
+        "room_id", sa.ForeignKey("room.id", ondelete="CASCADE"), primary_key=True
+    ),
+    sa.Column("equipment_id", sa.ForeignKey("equipment.id"), primary_key=True),
+)
+
+
+class Room(Base, AuditMixin):
+    __tablename__ = "room"
+
+    number: Mapped[str] = mapped_column(sa.String(20))
+    building_id: Mapped[uuid.UUID] = mapped_column(sa.ForeignKey("building.id"))
+    floor: Mapped[int]
+    capacity: Mapped[int]
+    description: Mapped[str | None] = mapped_column(sa.String(1000))
+    photo_id: Mapped[uuid.UUID | None] = mapped_column(sa.ForeignKey("file.id"))
+
+    building: Mapped[Building] = relationship(lazy="raise")
+    equipment: Mapped[list[Equipment]] = relationship(
+        secondary=room_equipment, order_by=Equipment.name, lazy="raise"
+    )
+    photo: Mapped[File | None] = relationship(lazy="raise")
+
+    __table_args__ = (
+        sa.Index(
+            "uq_room_building_number",
+            building_id,
+            sa.func.lower(number.collate("pg_unicode_fast")),
+            unique=True,
+        ),
+        sa.CheckConstraint(
+            "number = btrim(number) AND length(number) > 0", name="ck_room_number"
+        ),
+        sa.CheckConstraint("capacity BETWEEN 1 AND 1000", name="ck_room_capacity"),
+        sa.CheckConstraint("floor BETWEEN -5 AND 50", name="ck_room_floor"),
+    )
