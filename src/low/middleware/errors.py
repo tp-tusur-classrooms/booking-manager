@@ -32,13 +32,19 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
             error_response = resolve_exception(exc, self.error_logger)
             return JSONResponse(
                 status_code=error_response.status_code,
-                content=error_response.model_dump(exclude_none=True),
+                content=error_response.model_dump(
+                    mode="json",
+                    exclude={"errors"} if error_response.errors is None else set(),
+                ),
             )
         except Exception as e:
             error_response = resolve_exception(e, self.error_logger)
             return JSONResponse(
                 status_code=error_response.status_code,
-                content=error_response.model_dump(exclude_none=True),
+                content=error_response.model_dump(
+                    mode="json",
+                    exclude={"errors"} if error_response.errors is None else set(),
+                ),
                 headers=(
                     {"WWW-Authenticate": "Bearer"}
                     if error_response.status_code == 401

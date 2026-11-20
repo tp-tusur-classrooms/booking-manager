@@ -47,15 +47,32 @@ info:
     Учебный период — фиксированный интервал дня из справочника `GET /periods`,
     например `13:15–14:50`. Свободный ввод времени не предусмотрен.
 
-    Занятие повторяется в выбранный день недели и учебный период с даты
-    `starts_on` по дату `ends_on` включительно: каждую неделю, только по нечётным
-    или только по чётным неделям. Неделя начинается в понедельник. Первая неделя
-    учебного года — неделя, содержащая 1 сентября; она нечётная. Учебный год
-    длится с 1 сентября по 31 августа.
+    Занятие — конкретная запись на календарную дату `date`, связанная с
+    аудиторией, периодом и обязательным названием `subject`. Повторения по
+    неделям не создаются. Поля `weekday`, `week_parity`, `starts_on`, `ends_on`
+    из предварительного контракта больше не принимаются.
 
-    Два занятия пересекаются, если у них одна аудитория, один день недели
-    и один учебный период, диапазоны дат перекрываются, а недели совместимы
-    (`every` совместима с любой, `odd` с `odd`, `even` с `even`).
+    `GET /schedule?date=YYYY-MM-DD` возвращает все опубликованные аудитории,
+    включая строки с пустым `lessons`. Границы суток — от местной полуночи
+    включительно до следующей полуночи исключительно; ответ содержит
+    `timezone: Asia/Tomsk`, `starts_at` и `ends_at` со смещением UTC.
+
+    Пересечение определяется по фактическому интервалу `[starts_at, ends_at)`
+    в одной аудитории, даже если выбраны разные пересекающиеся периоды.
+    Соседние интервалы допустимы. Ограничение EXCLUDE в PostgreSQL защищает
+    от параллельных записей; изменение не конфликтует с самой записью.
+
+    Справочник периодов не ограничен четырьмя колонками макета. Количество
+    и время периодов задаются вне API. Примеры в контракте не являются
+    утверждённым полным графиком университета.
+    Времена используемого периода нельзя менять: нужно завести новый период
+    и явно перенести занятия. Порядок периодов можно менять вне API.
+
+    `Period` представляет независимый от вида занятости временной интервал,
+    `TeachingPeriodTemplate` — справочник, `ScheduledLesson` — конкретное
+    занятие, `ClassroomCalendar` — строку суточной выдачи. В календарь позднее
+    можно добавить другие виды занятости без изменения списка занятий.
+    Брони, ремонт и уведомления сейчас не хранятся и не создаются.
 
     Список статусов занятости может расширяться в следующих спринтах. Клиент
     считает неизвестный статус недоступным для выбора.
@@ -826,7 +843,10 @@ paths:
       tags: [Schedule]
       operationId: listPeriods
       summary: Получить справочник учебных периодов
-      description: Справочник ведётся вне API. Порядок — по полю `order`.
+      description: |
+        Справочник ведётся вне API. Порядок — по уникальному положительному
+        полю `order`, время — `HH:MM` в Asia/Tomsk. Число периодов произвольное;
+        четыре периода в примере не являются полным расписанием университета.
       responses:
         '200':
           description: Учебные периоды
@@ -861,12 +881,81 @@ paths:
                     items: []
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /schedule:
+    get:
+      tags: [Schedule]
+      operationId: getDaySchedule
+      summary: Получить расписание всех аудиторий на дату
+      description: |
+        Все опубликованные аудитории, включая не имеющие занятий.
+        Порядок строк — по корпусу и номеру, занятий — по началу.
+        Отсутствие занятий не убирает аудитории из ответа. Без аудиторий
+        `items` пуст; без периодов `periods` пуст. Запросы не создают записи.
+      parameters:
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+          description: Календарная дата Asia/Tomsk в формате YYYY-MM-DD, до 9999-12-30 включительно.
+          example: '2026-10-22'
+      responses:
+        '200':
+          description: Суточное расписание, включая свободные аудитории
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DaySchedule'
+              examples:
+                emptyDay:
+                  summary: Пустой день, но аудитории присутствуют
+                  value:
+                    date: '2026-10-22'
+                    timezone: Asia/Tomsk
+                    starts_at: '2026-10-22T00:00:00+07:00'
+                    ends_at: '2026-10-23T00:00:00+07:00'
+                    periods:
+                      - id: 3d4e5f6a-0000-4000-8000-000000000001
+                        order: 1
+                        start_time: '08:50'
+                        end_time: '10:25'
+                    items:
+                      - room:
+                          id: 4e5f6a7b-0000-4000-8000-000000000405
+                          number: '405'
+                          building:
+                            id: 1b2c3d4e-0000-4000-8000-000000000001
+                            name: Корпус 1
+                        lessons: []
+                      - room:
+                          id: 4e5f6a7b-0000-4000-8000-000000000407
+                          number: '407'
+                          building:
+                            id: 1b2c3d4e-0000-4000-8000-000000000001
+                            name: Корпус 1
+                        lessons: []
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /lessons:
     get:
       tags: [Schedule]
       operationId: listLessons
-      summary: Получить глобальное учебное расписание
-      description: Порядок — по дню недели, учебному периоду, корпусу и номеру аудитории.
+      summary: Получить список конкретных занятий
+      description: |
+        Порядок — по дате, началу, корпусу и номеру аудитории. Без `date`
+        возвращает все занятия, с `date` — только выбранные сутки Asia/Tomsk.
+        Для календаря со свободными аудиториями используйте `GET /schedule`.
+      parameters:
+        - name: date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          example: '2026-10-22'
       responses:
         '200':
           description: Занятия
@@ -891,10 +980,9 @@ paths:
                           order: 1
                           start_time: '08:50'
                           end_time: '10:25'
-                        weekday: 4
-                        week_parity: every
-                        starts_on: '2026-09-01'
-                        ends_on: '2026-12-30'
+                        date: '2026-10-22'
+                        starts_at: '2026-10-22T08:50:00+07:00'
+                        ends_at: '2026-10-22T10:25:00+07:00'
                         subject: Технология программирования
                         group: 432-1
                         teacher: Петров П. П.
@@ -910,17 +998,18 @@ paths:
                           order: 3
                           start_time: '13:15'
                           end_time: '14:50'
-                        weekday: 5
-                        week_parity: even
-                        starts_on: '2026-09-01'
-                        ends_on: '2026-12-30'
-                        subject: null
+                        date: '2026-10-22'
+                        starts_at: '2026-10-22T13:15:00+07:00'
+                        ends_at: '2026-10-22T14:50:00+07:00'
+                        subject: Консультация
                         group: null
                         teacher: null
                 empty:
                   summary: Расписание пусто
                   value:
                     items: []
+        '400':
+          $ref: '#/components/responses/ValidationError'
         '401':
           $ref: '#/components/responses/Unauthorized'
     post:
@@ -928,8 +1017,10 @@ paths:
       operationId: createLesson
       summary: Добавить занятие
       description: |
-        Только для администратора. Занятие не должно пересекаться с другими
-        занятиями в той же аудитории.
+        Только для администратора. Создаёт одно занятие на конкретную дату.
+        Обязательны аудитория, период, дата и название. Фактические начало
+        и окончание вычисляет сервер по справочнику, а не принимает от клиента.
+        Пересечение с другим занятием в этой аудитории — `409 lesson_conflict`.
       requestBody:
         required: true
         content:
@@ -939,10 +1030,7 @@ paths:
             example:
               room_id: 4e5f6a7b-0000-4000-8000-000000000405
               period_id: 3d4e5f6a-0000-4000-8000-000000000001
-              weekday: 4
-              week_parity: every
-              starts_on: '2026-09-01'
-              ends_on: '2026-12-30'
+              date: '2026-10-22'
               subject: Технология программирования
               group: 432-1
               teacher: Петров П. П.
@@ -981,6 +1069,8 @@ paths:
               examples:
                 lesson:
                   $ref: '#/components/examples/Lesson'
+        '400':
+          $ref: '#/components/responses/ValidationError'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -1001,10 +1091,7 @@ paths:
             example:
               room_id: 4e5f6a7b-0000-4000-8000-000000000405
               period_id: 3d4e5f6a-0000-4000-8000-000000000002
-              weekday: 4
-              week_parity: odd
-              starts_on: '2026-09-01'
-              ends_on: '2026-12-30'
+              date: '2026-10-22'
               subject: Технология программирования
               group: 432-1
               teacher: Петров П. П.
@@ -1028,10 +1115,9 @@ paths:
                   order: 2
                   start_time: '10:40'
                   end_time: '12:15'
-                weekday: 4
-                week_parity: odd
-                starts_on: '2026-09-01'
-                ends_on: '2026-12-30'
+                date: '2026-10-22'
+                starts_at: '2026-10-22T10:40:00+07:00'
+                ends_at: '2026-10-22T12:15:00+07:00'
                 subject: Технология программирования
                 group: 432-1
                 teacher: Петров П. П.
@@ -1049,10 +1135,12 @@ paths:
       tags: [Schedule]
       operationId: deleteLesson
       summary: Удалить занятие
-      description: Только для администратора.
+      description: Только для администратора. Удаляет одно конкретное занятие.
       responses:
         '204':
           description: Занятие удалено
+        '400':
+          $ref: '#/components/responses/ValidationError'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1082,7 +1170,7 @@ components:
         format: uuid
   examples:
     Lesson:
-      summary: Занятие по четвергам
+      summary: Конкретное занятие на дату
       value:
         id: 5f6a7b8c-0000-4000-8000-000000000001
         room:
@@ -1096,10 +1184,9 @@ components:
           order: 1
           start_time: '08:50'
           end_time: '10:25'
-        weekday: 4
-        week_parity: every
-        starts_on: '2026-09-01'
-        ends_on: '2026-12-30'
+        date: '2026-10-22'
+        starts_at: '2026-10-22T08:50:00+07:00'
+        ends_at: '2026-10-22T10:25:00+07:00'
         subject: Технология программирования
         group: 432-1
         teacher: Петров П. П.
@@ -1360,17 +1447,11 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/TeachingPeriod'
-    Weekday:
-      type: integer
-      minimum: 1
-      maximum: 7
-      description: День недели по ISO 8601, 1 — понедельник, 7 — воскресенье.
-    WeekParity:
+    LessonName:
       type: string
-      enum: [every, odd, even]
-      description: |
-        `every` — каждую неделю, `odd` — по нечётным, `even` — по чётным неделям
-        учебного года.
+      minLength: 1
+      maxLength: 200
+      description: Название занятия; пробелы по краям удаляются, пустое значение запрещено.
     LessonText:
       type: [string, 'null']
       minLength: 1
@@ -1388,7 +1469,7 @@ components:
           $ref: '#/components/schemas/Building'
     Lesson:
       type: object
-      required: [id, room, period, weekday, week_parity, starts_on, ends_on, subject, group, teacher]
+      required: [id, room, period, date, starts_at, ends_at, subject, group, teacher]
       properties:
         id:
           type: string
@@ -1397,18 +1478,20 @@ components:
           $ref: '#/components/schemas/RoomSummary'
         period:
           $ref: '#/components/schemas/TeachingPeriod'
-        weekday:
-          $ref: '#/components/schemas/Weekday'
-        week_parity:
-          $ref: '#/components/schemas/WeekParity'
-        starts_on:
+        date:
           type: string
           format: date
-        ends_on:
+          description: Календарная дата занятия в Asia/Tomsk.
+        starts_at:
           type: string
-          format: date
+          format: date-time
+          description: Начало периода на выбранную дату, включая смещение UTC.
+        ends_at:
+          type: string
+          format: date-time
+          description: Исключительная правая граница занятия.
         subject:
-          $ref: '#/components/schemas/LessonText'
+          $ref: '#/components/schemas/LessonName'
         group:
           $ref: '#/components/schemas/LessonText'
         teacher:
@@ -1423,35 +1506,63 @@ components:
             $ref: '#/components/schemas/Lesson'
     LessonWrite:
       type: object
-      required: [room_id, period_id, weekday, week_parity, starts_on, ends_on]
+      required: [room_id, period_id, date, subject]
       additionalProperties: false
       properties:
         room_id:
           type: string
           format: uuid
-          description: Аудитория, в том числе черновик.
+          description: Существующая опубликованная аудитория из `GET /rooms`.
         period_id:
           type: string
           format: uuid
           description: Учебный период из `GET /periods`.
-        weekday:
-          $ref: '#/components/schemas/Weekday'
-        week_parity:
-          $ref: '#/components/schemas/WeekParity'
-        starts_on:
+        date:
           type: string
           format: date
-          description: Первая дата действия занятия.
-        ends_on:
-          type: string
-          format: date
-          description: Последняя дата действия занятия, не раньше `starts_on`.
+          description: Конкретная дата в Asia/Tomsk, до 9999-12-30 включительно. Только YYYY-MM-DD, не timestamp.
         subject:
-          $ref: '#/components/schemas/LessonText'
+          $ref: '#/components/schemas/LessonName'
         group:
           $ref: '#/components/schemas/LessonText'
         teacher:
           $ref: '#/components/schemas/LessonText'
+    ClassroomCalendar:
+      type: object
+      required: [room, lessons]
+      description: Строка календаря аудитории. Список занятий пуст, если в этот день занятий нет.
+      properties:
+        room:
+          $ref: '#/components/schemas/RoomSummary'
+        lessons:
+          type: array
+          items:
+            $ref: '#/components/schemas/Lesson'
+    DaySchedule:
+      type: object
+      required: [date, timezone, starts_at, ends_at, periods, items]
+      properties:
+        date:
+          type: string
+          format: date
+        timezone:
+          type: string
+          const: Asia/Tomsk
+        starts_at:
+          type: string
+          format: date-time
+        ends_at:
+          type: string
+          format: date-time
+        periods:
+          type: array
+          items:
+            $ref: '#/components/schemas/TeachingPeriod'
+        items:
+          type: array
+          description: Все опубликованные аудитории, не только имеющие занятия.
+          items:
+            $ref: '#/components/schemas/ClassroomCalendar'
     LessonBrief:
       type: object
       required: [id, subject, group, teacher]
@@ -1621,15 +1732,15 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
           examples:
-            invalidDates:
-              summary: Дата окончания раньше даты начала
+            invalidDate:
+              summary: Неверная дата занятия
               value:
                 message: Проверьте заполнение полей
                 status_code: 400
                 code: validation_error
                 errors:
-                  - field: ends_on
-                    message: Дата окончания не может быть раньше даты начала
+                  - field: date
+                    message: Укажите дату в формате ГГГГ-ММ-ДД
             unknownReference:
               summary: Аудитория или период не найдены
               value:
@@ -1664,10 +1775,9 @@ components:
                   order: 1
                   start_time: '08:50'
                   end_time: '10:25'
-                weekday: 4
-                week_parity: every
-                starts_on: '2026-09-01'
-                ends_on: '2026-12-30'
+                date: '2026-10-22'
+                starts_at: '2026-10-22T08:50:00+07:00'
+                ends_at: '2026-10-22T10:25:00+07:00'
                 subject: Технология программирования
                 group: 432-1
                 teacher: Петров П. П.

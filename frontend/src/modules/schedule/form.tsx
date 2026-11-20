@@ -5,27 +5,15 @@ import type { ApiError } from '../../api';
 import { ConfirmDialog, FormField, inputClass, Notice, primaryButton, secondaryButton, StatePanel } from '../../ui';
 import { classroomsApi, requestStatus, type Classroom } from '../classrooms/api';
 import { useRequest } from '../classrooms/use-request';
-import { periodTime, scheduleApi, type Lesson, type LessonWrite, type Period, type WeekParity } from './api';
-import { firstOccurrence, formatDate, occursOn, weekday } from './dates';
+import { periodTime, scheduleApi, type Lesson, type LessonWrite, type Period } from './api';
+import { formatDate, isDate } from './dates';
 
-const weekdays = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
-const shortWeekdays = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
-
-const parities: { value: WeekParity; label: string }[] = [
-  { value: 'every', label: 'Каждую неделю' },
-  { value: 'odd', label: 'По нечётным неделям' },
-  { value: 'even', label: 'По чётным неделям' },
-];
-
-type Field = 'room_id' | 'period_id' | 'weekday' | 'week_parity' | 'starts_on' | 'ends_on' | 'subject' | 'group' | 'teacher';
+type Field = 'room_id' | 'period_id' | 'date' | 'subject' | 'group' | 'teacher';
 
 interface Values {
   room_id: string;
   period_id: string;
-  weekday: string;
-  week_parity: WeekParity;
-  starts_on: string;
-  ends_on: string;
+  date: string;
   subject: string;
   group: string;
   teacher: string;
@@ -44,20 +32,13 @@ interface FormData {
   lesson?: Lesson;
 }
 
-function isDate(value: string | null): value is string {
-  return value !== null && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value));
-}
-
 function initialValues(data: FormData, params: URLSearchParams): Values {
   const { lesson } = data;
   if (lesson) {
     return {
       room_id: lesson.room.id,
       period_id: lesson.period.id,
-      weekday: String(lesson.weekday),
-      week_parity: lesson.week_parity,
-      starts_on: lesson.starts_on,
-      ends_on: lesson.ends_on,
+      date: lesson.date,
       subject: lesson.subject ?? '',
       group: lesson.group ?? '',
       teacher: lesson.teacher ?? '',
@@ -69,10 +50,7 @@ function initialValues(data: FormData, params: URLSearchParams): Values {
   return {
     room_id: data.rooms.some((item) => item.id === room) ? room : '',
     period_id: data.periods.some((item) => item.id === period) ? period : '',
-    weekday: isDate(date) ? String(weekday(date)) : '',
-    week_parity: 'every',
-    starts_on: isDate(date) ? date : '',
-    ends_on: isDate(date) ? date : '',
+    date: isDate(date) ? date : '',
     subject: '',
     group: '',
     teacher: '',
@@ -83,18 +61,8 @@ function validate(values: Values): Errors {
   const errors: Errors = {};
   if (!values.room_id) errors.room_id = 'Выберите аудиторию';
   if (!values.period_id) errors.period_id = 'Выберите учебный период';
-  if (!values.weekday) errors.weekday = 'Выберите день недели';
-  if (!values.starts_on) errors.starts_on = 'Укажите дату начала';
-  if (!values.ends_on) errors.ends_on = 'Укажите дату окончания';
-  else if (values.starts_on && values.ends_on < values.starts_on) {
-    errors.ends_on = 'Дата окончания не может быть раньше даты начала';
-  }
-  if (Object.keys(errors).length === 0 && !firstOccurrence(toPayload(values))) {
-    errors.weekday =
-      values.week_parity === 'every'
-        ? 'В выбранные даты нет такого дня недели'
-        : 'В выбранные даты нет такого дня недели с нужной чётностью';
-  }
+  if (!isDate(values.date)) errors.date = 'Укажите дату занятия';
+  if (!values.subject.trim()) errors.subject = 'Введите название занятия';
   return errors;
 }
 
@@ -103,20 +71,16 @@ function toPayload(values: Values): LessonWrite {
   return {
     room_id: values.room_id,
     period_id: values.period_id,
-    weekday: Number(values.weekday),
-    week_parity: values.week_parity,
-    starts_on: values.starts_on,
-    ends_on: values.ends_on,
-    subject: text(values.subject),
+    date: values.date,
+    subject: values.subject.trim(),
     group: text(values.group),
     teacher: text(values.teacher),
   };
 }
 
 function describeConflict(lesson: Lesson) {
-  const parity = lesson.week_parity === 'every' ? '' : lesson.week_parity === 'odd' ? ', нечётные недели' : ', чётные недели';
   const name = lesson.subject ? `«${lesson.subject}»` : 'без названия';
-  return `Пересекается с занятием ${name}: ауд. ${lesson.room.number}, ${shortWeekdays[lesson.weekday - 1]}, ${periodTime(lesson.period)}${parity}.`;
+  return `Пересекается с занятием ${name}: ауд. ${lesson.room.number}, ${formatDate(lesson.date)}, ${periodTime(lesson.period)}.`;
 }
 
 function failure(error: unknown): { errors: Errors; problem: Problem } {
@@ -130,7 +94,7 @@ function failure(error: unknown): { errors: Errors; problem: Problem } {
       errors: {},
       problem: {
         title: 'Аудитория уже занята в это время',
-        text: `${conflict ? `${describeConflict(conflict)} ` : ''}Выберите другую аудиторию, период или даты.`,
+        text: `${conflict ? `${describeConflict(conflict)} ` : ''}Выберите другую аудиторию, период или дату.`,
       },
     };
   }
@@ -157,18 +121,15 @@ function DeleteLesson({ lesson, backDate }: { lesson: Lesson; backDate: string |
   const [deleting, setDeleting] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
-  const repeat = parities.find((parity) => parity.value === lesson.week_parity)?.label.toLowerCase();
-  const range = lesson.starts_on === lesson.ends_on ? dayText(lesson.starts_on) : `с ${dayText(lesson.starts_on)} по ${dayText(lesson.ends_on)}`;
-
   async function remove() {
     setDeleting(true);
     setProblem(null);
     try {
       await scheduleApi.remove(lesson.id);
-      navigate(`/schedule?date=${backDate ?? lesson.starts_on}`);
+      navigate(`/schedule?date=${backDate ?? lesson.date}`);
     } catch (error) {
       if (requestStatus(error) === 404) {
-        navigate(`/schedule?date=${backDate ?? lesson.starts_on}`);
+        navigate(`/schedule?date=${backDate ?? lesson.date}`);
         return;
       }
       setProblem(isAxiosError(error) && error.response ? 'Сервер не смог удалить занятие. Попробуйте ещё раз.' : 'Сервер недоступен. Проверьте подключение и попробуйте снова.');
@@ -201,12 +162,10 @@ function DeleteLesson({ lesson, backDate }: { lesson: Lesson; backDate: string |
         <p className="mt-2 text-sm leading-[22px] text-muted">
           Аудитория {lesson.room.number} · {lesson.room.building.name}
           <br />
-          {weekdays[lesson.weekday - 1]} · {periodTime(lesson.period)} · {repeat}
-          <br />
-          {range}
+          {dayText(lesson.date)} · {periodTime(lesson.period)}
         </p>
         <p className="mt-6 border-t border-line pt-6 text-sm leading-[22px] text-muted">
-          Занятие исчезнет из расписания на все эти даты. Вернуть его можно будет только добавив заново.
+          Занятие исчезнет из расписания на эту дату. Вернуть его можно будет только добавив заново.
         </p>
         {problem && (
           <div className="mt-6">
@@ -247,8 +206,7 @@ function LessonForm({ data, lessonId, backDate }: { data: FormData; lessonId?: s
       const payload = toPayload(values);
       if (lessonId) await scheduleApi.update(lessonId, payload);
       else await scheduleApi.create(payload);
-      const target = backDate && occursOn(payload, backDate) ? backDate : (firstOccurrence(payload) ?? payload.starts_on);
-      navigate(`/schedule?date=${target}`);
+      navigate(`/schedule?date=${payload.date}`);
     } catch (error) {
       const result = failure(error);
       setErrors(result.errors);
@@ -267,7 +225,6 @@ function LessonForm({ data, lessonId, backDate }: { data: FormData; lessonId?: s
             {data.rooms.map((room) => (
               <option key={room.id} value={room.id}>
                 Ауд. {room.number} · {room.building.name}
-                {room.status === 'draft' ? ' · черновик' : ''}
               </option>
             ))}
           </select>
@@ -282,34 +239,12 @@ function LessonForm({ data, lessonId, backDate }: { data: FormData; lessonId?: s
             ))}
           </select>
         </FormField>
-        <FormField label="День недели" error={errors.weekday}>
-          <select value={values.weekday} onChange={change('weekday')} className={inputClass}>
-            <option value="">Выберите день</option>
-            {weekdays.map((name, index) => (
-              <option key={name} value={index + 1}>
-                {name}
-              </option>
-            ))}
-          </select>
-        </FormField>
-        <FormField label="Повторение" error={errors.week_parity}>
-          <select value={values.week_parity} onChange={change('week_parity')} className={inputClass}>
-            {parities.map((parity) => (
-              <option key={parity.value} value={parity.value}>
-                {parity.label}
-              </option>
-            ))}
-          </select>
-        </FormField>
-        <FormField label="Действует с" error={errors.starts_on}>
-          <input type="date" value={values.starts_on} onChange={change('starts_on')} className={inputClass} />
-        </FormField>
-        <FormField label="Действует по" error={errors.ends_on}>
-          <input type="date" value={values.ends_on} min={values.starts_on || undefined} onChange={change('ends_on')} className={inputClass} />
+        <FormField label="Дата занятия" error={errors.date}>
+          <input type="date" value={values.date} onChange={change('date')} className={inputClass} />
         </FormField>
       </div>
-      <FormField label="Предмет" error={errors.subject}>
-        <input value={values.subject} maxLength={200} onChange={change('subject')} placeholder="Например, Технология программирования" className={inputClass} />
+      <FormField label="Название занятия" error={errors.subject}>
+        <input value={values.subject} required maxLength={200} onChange={change('subject')} placeholder="Например, Технология программирования" className={inputClass} />
       </FormField>
       <div className="grid gap-6 sm:grid-cols-2">
         <FormField label="Группа" error={errors.group}>
@@ -355,7 +290,7 @@ function LessonPage({ lessonId }: { lessonId?: string }) {
     <>
       <h1 className="text-[32px] leading-10 font-bold">{lessonId ? 'Изменить занятие' : 'Добавить занятие'}</h1>
       <p className="mt-2 text-sm leading-[22px] text-muted">
-        {backDate ? `Расписание на ${formatDate(backDate)}` : 'Занятие повторяется в выбранный день недели и период.'}
+        {backDate ? `Расписание на ${formatDate(backDate)}` : 'Одно занятие на выбранную дату и учебный период. Часовой пояс — Томск (UTC+7).'}
       </p>
       {result.status === 'loading' && (
         <div role="status" className="mt-8 h-[560px] max-w-[864px] rounded-2xl border border-line bg-white motion-safe:animate-pulse">

@@ -6,6 +6,8 @@ from src.domain.file.repositories import FileMetadataRepository, FileRepository
 from src.domain.file.services import ImageFileService
 from src.domain.rooms.repositories import RoomRepository
 from src.domain.rooms.services import RoomService
+from src.domain.schedule.repositories import ScheduleRepository
+from src.domain.schedule.services import ScheduleService
 from src.domain.security.services import HasherService, TokenService
 from src.domain.token.repositories import TokenRepository
 from src.domain.users.repositories import UserRepository
@@ -71,6 +73,11 @@ class Container(containers.DeclarativeContainer):
     )
 
     # СЛОЙ 3: Сервисы домена
+    schedule_repository = providers.Factory(ScheduleRepository, session=session)
+    schedule_service = providers.Factory(
+        ScheduleService, uow=uow, repository=schedule_repository
+    )
+
     room_repository = providers.Factory(RoomRepository, session=session)
     room_service = providers.Factory(
         RoomService,
@@ -118,5 +125,6 @@ async def setup_container(config: ModulesConfig, creds: ModulesCreds) -> None:
             "src.api.v1.user",
             "src.api.v1.common",
             "src.api.v1.rooms",
+            "src.api.v1.schedule",
         ]
     )
