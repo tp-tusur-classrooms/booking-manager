@@ -35,11 +35,6 @@ export async function uploadClassroomPhoto(id: string, photo: File) {
   await api.put(`/rooms/${encodeURIComponent(id)}/photo`, body, { timeout: 30000 });
 }
 
-export async function publishClassroom(id: string) {
-  const { data } = await api.post<Classroom>(`/rooms/${encodeURIComponent(id)}/publish`);
-  if (data?.status !== 'published') throw new Error('Аудитория не опубликована');
-}
-
 export function validationDetails(error: unknown) {
   if (!isAxiosError<{ errors?: { field: string; message: string }[] }>(error)) return [];
   const issues = error.response?.data?.errors;

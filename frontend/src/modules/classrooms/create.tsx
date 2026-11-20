@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { requestStatus } from './api';
-import { createClassroom, getClassroomOptions, publishClassroom, uploadClassroomPhoto, validationDetails } from './create-api';
+import { createClassroom, getClassroomOptions, uploadClassroomPhoto, validationDetails } from './create-api';
 import { useRequest } from './use-request';
 
 const fields = ['number', 'building', 'floor', 'capacity', 'equipment', 'description', 'photo'] as const;
@@ -38,7 +38,7 @@ export function ClassroomCreate() {
   const [photo, setPhoto] = useState<File | null>(null);
   const [preview, setPreview] = useState('');
   const [pending, setPending] = useState(false);
-  const [draftId, setDraftId] = useState<string>();
+  const [createdId, setCreatedId] = useState<string>();
   const [photoUploaded, setPhotoUploaded] = useState(false);
   const submitting = useRef(false);
   const active = useRef(false);
@@ -85,7 +85,7 @@ export function ClassroomCreate() {
       description: read('description') || null,
     };
     const next: Errors = {};
-    if (!draftId) {
+    if (!createdId) {
       if (!input.number) next.number = 'Введите номер аудитории.';
       else if (Array.from(input.number).length > 20) next.number = 'Введите не больше 20 символов.';
       if (!input.building_id) next.building = 'Выберите корпус.';
@@ -106,17 +106,15 @@ export function ClassroomCreate() {
 
     submitting.current = true;
     setPending(true);
-    let stage: 'create' | 'photo' | 'publish' = 'create';
+    let stage: 'create' | 'photo' = 'create';
     try {
-      const id = draftId ?? await createClassroom(input);
-      setDraftId(id);
+      const id = createdId ?? await createClassroom(input);
+      setCreatedId(id);
       if (photo && !photoUploaded) {
         stage = 'photo';
         await uploadClassroomPhoto(id, photo);
         setPhotoUploaded(true);
       }
-      stage = 'publish';
-      await publishClassroom(id);
       if (active.current) void navigate('/admin', { replace: true, state: { created: true } });
     } catch (error) {
       const status = requestStatus(error);
@@ -135,11 +133,10 @@ export function ClassroomCreate() {
         if (!Object.keys(serverErrors).length) {
           const messages = {
             create: 'Не удалось создать аудиторию. Повторите отправку.',
-            photo: 'Черновик сохранён. Не удалось загрузить фото. Повторите отправку.',
-            publish: 'Черновик сохранён. Не удалось опубликовать аудиторию. Повторите отправку.',
+            photo: 'Аудитория уже видна в каталоге. Не удалось загрузить фото. Повторите загрузку или продолжите без фото.',
           };
           setMessage(status === 401 || status === 403
-            ? 'Для публикации нужен доступ администратора.'
+            ? 'Для создания аудитории и загрузки фото нужен доступ администратора.'
             : messages[stage]);
         }
       }
@@ -164,7 +161,7 @@ export function ClassroomCreate() {
         className="grid items-start gap-8 lg:grid-cols-[2.08fr_1fr]">
         <section className={panel} aria-labelledby="room-info">
           <h2 id="room-info" className="mb-6 text-[22px] font-bold">Основная информация</h2>
-          <fieldset disabled={pending || Boolean(draftId)} className="space-y-6">
+          <fieldset disabled={pending || Boolean(createdId)} className="space-y-6">
             <div className="grid gap-6 sm:grid-cols-3">
               <Field name="number" label="Номер аудитории" errors={errors}>
                 <input {...props('number')} required />
@@ -201,17 +198,17 @@ export function ClassroomCreate() {
               <textarea {...props('description')} rows={2} className={`${input} resize-y`} />
             </Field>
           </fieldset>
-          {draftId && !pending && <p className="mt-4 text-sm">Аудитория сохранена как черновик.</p>}
+          {createdId && !pending && <p className="mt-4 text-sm">Аудитория сохранена и уже видна в каталоге. Фотографию можно загрузить повторно или продолжить без неё.</p>}
           {message && <p role="alert" className="mt-4 text-sm text-red-700">{message}</p>}
           <div className="mt-6 flex items-center gap-3">
             <button type="submit" disabled={pending || result.status !== 'ready'}
               className="rounded-[10px] bg-[#6952b3] px-[18px] py-3 text-sm text-white hover:bg-[#574198] disabled:opacity-60">
-              {pending ? 'Сохраняем…' : draftId ? 'Продолжить публикацию' : 'Добавить аудиторию'}
+              {pending ? 'Сохраняем…' : createdId ? 'Продолжить' : 'Добавить аудиторию'}
             </button>
             {pending ? (
               <button type="button" disabled className="rounded-[10px] border border-[#e4e4ea] px-5 py-3 text-sm opacity-60">Отмена</button>
             ) : (
-              <Link to="/admin" className="rounded-[10px] border border-[#e4e4ea] px-5 py-3 text-sm hover:bg-[#f7f7f9]">{draftId ? 'К списку' : 'Отмена'}</Link>
+              <Link to="/admin" className="rounded-[10px] border border-[#e4e4ea] px-5 py-3 text-sm hover:bg-[#f7f7f9]">{createdId ? 'К списку' : 'Отмена'}</Link>
             )}
           </div>
         </section>
