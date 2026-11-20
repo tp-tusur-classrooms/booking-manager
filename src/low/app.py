@@ -109,6 +109,7 @@ class App:
                 "description": "Справочники корпусов и оборудования",
             },
             {"name": "Rooms", "description": "Каталог и управление аудиториями"},
+            {"name": "Schedule", "description": "Учебные периоды и занятия на дату"},
         ]
 
         # Включаем BearerAuth (JWT) на securitySchemes

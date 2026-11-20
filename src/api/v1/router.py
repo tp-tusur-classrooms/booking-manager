@@ -1,11 +1,12 @@
 from fastapi import APIRouter
 
-from src.api.v1 import auth, rooms, user
+from src.api.v1 import auth, rooms, schedule, user
 
 ROUTERS: list[APIRouter] = [
     auth.router,
     user.router,
     rooms.router,
+    schedule.router,
 ]
 
 api_router = APIRouter()
