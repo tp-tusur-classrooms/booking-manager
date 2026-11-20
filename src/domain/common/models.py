@@ -1,8 +1,9 @@
+import datetime as dt
 from datetime import datetime
 import uuid
 
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, ExcludeConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql.functions import now
 
@@ -112,4 +113,59 @@ class Room(Base, AuditMixin):
         ),
         sa.CheckConstraint("capacity BETWEEN 1 AND 1000", name="ck_room_capacity"),
         sa.CheckConstraint("floor BETWEEN -5 AND 50", name="ck_room_floor"),
+    )
+
+
+class TeachingPeriodTemplate(Base):
+    __tablename__ = "teaching_period_template"
+
+    order: Mapped[int]
+    start_time: Mapped[dt.time] = mapped_column(sa.Time(timezone=False))
+    end_time: Mapped[dt.time] = mapped_column(sa.Time(timezone=False))
+
+    __table_args__ = (
+        sa.UniqueConstraint("order", name="uq_teaching_period_order"),
+        sa.UniqueConstraint("start_time", "end_time", name="uq_teaching_period_times"),
+        sa.CheckConstraint('"order" > 0', name="ck_teaching_period_order"),
+        sa.CheckConstraint("start_time < end_time", name="ck_teaching_period_times"),
+        sa.CheckConstraint(
+            "extract(second FROM start_time) = 0 AND extract(second FROM end_time) = 0",
+            name="ck_teaching_period_minutes",
+        ),
+    )
+
+
+class ScheduledLesson(Base, AuditMixin):
+    __tablename__ = "scheduled_lesson"
+
+    room_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("room.id", name="fk_scheduled_lesson_room")
+    )
+    period_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("teaching_period_template.id", name="fk_scheduled_lesson_period")
+    )
+    date: Mapped[dt.date] = mapped_column(sa.Date())
+    starts_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    ends_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    subject: Mapped[str] = mapped_column(sa.String(200))
+    group: Mapped[str | None] = mapped_column(sa.String(200))
+    teacher: Mapped[str | None] = mapped_column(sa.String(200))
+
+    room: Mapped[Room] = relationship(lazy="raise")
+    period: Mapped[TeachingPeriodTemplate] = relationship(lazy="raise")
+
+    __table_args__ = (
+        sa.Index("ix_scheduled_lesson_date", "date"),
+        sa.Index("ix_scheduled_lesson_period", "period_id"),
+        sa.CheckConstraint("starts_at < ends_at", name="ck_scheduled_lesson_times"),
+        sa.CheckConstraint(
+            "subject = btrim(subject) AND length(subject) > 0",
+            name="ck_scheduled_lesson_subject",
+        ),
+        ExcludeConstraint(
+            (room_id, "="),
+            (sa.func.tstzrange(starts_at, ends_at, sa.literal_column("'[)'")), "&&"),
+            name="ex_scheduled_lesson_overlap",
+            using="gist",
+        ),
     )
