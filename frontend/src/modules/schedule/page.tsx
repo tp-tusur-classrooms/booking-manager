@@ -1,32 +1,13 @@
+import { useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { useSession } from '../../session';
 import { primaryButton, secondaryButton, StatePanel } from '../../ui';
-import { classroomsApi, type Classroom } from '../classrooms/api';
 import { useRequest } from '../classrooms/use-request';
-import { periodTime, scheduleApi, type Lesson, type Period } from './api';
-import { addDays, formatDate, occursOn, today } from './dates';
+import { periodTime, scheduleApi, type DaySchedule, type Lesson, type Period } from './api';
+import { addDays, formatDate, isDate, today } from './dates';
 
 const cellLink =
   'block h-full rounded-[10px] outline-accent focus-visible:outline-2 focus-visible:outline-offset-2 [&>div]:hover:border-accent [&>div]:hover:border-solid';
-
-interface ScheduleData {
-  rooms: Classroom[];
-  periods: Period[];
-  lessons: Lesson[];
-}
-
-async function loadSchedule(signal: AbortSignal): Promise<ScheduleData> {
-  const [rooms, periods, lessons] = await Promise.all([
-    classroomsApi.list(signal),
-    scheduleApi.periods(signal),
-    scheduleApi.lessons(signal),
-  ]);
-  return { rooms, periods, lessons };
-}
-
-function isDate(value: string | null): value is string {
-  return value !== null && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value));
-}
 
 function Arrow({ back }: { back?: boolean }) {
   return (
@@ -82,11 +63,10 @@ function FreeCell() {
   );
 }
 
-function ScheduleTable({ data, date, editable }: { data: ScheduleData; date: string; editable: boolean }) {
-  const lessons = data.lessons.filter((lesson) => occursOn(lesson, date));
-  const lessonAt = (room: Classroom, period: Period) =>
-    lessons.find((lesson) => lesson.room.id === room.id && lesson.period.id === period.id);
-  const busyDay = data.rooms.some((room) => data.periods.some((period) => lessonAt(room, period)));
+function ScheduleTable({ data, date, editable }: { data: DaySchedule; date: string; editable: boolean }) {
+  const lessonsAt = (lessons: Lesson[], period: Period) =>
+    lessons.filter((lesson) => lesson.period.start_time < period.end_time && lesson.period.end_time > period.start_time);
+  const busyDay = data.items.some((row) => row.lessons.length > 0);
 
   return (
     <>
@@ -114,40 +94,39 @@ function ScheduleTable({ data, date, editable }: { data: ScheduleData; date: str
             </tr>
           </thead>
           <tbody>
-            {data.rooms.map((room) => (
+            {data.items.map(({ room, lessons }) => (
               <tr key={room.id} className="[&:not(:last-child)>*]:border-b [&>*]:border-line">
                 <th scope="row" className="sticky left-0 z-10 bg-white px-6 py-3 align-middle font-normal">
                   <span className="block font-bold whitespace-nowrap">Ауд. {room.number}</span>
                   <span className="block text-xs leading-[18px] whitespace-nowrap text-muted">
                     {room.building.name}
-                    {room.status === 'draft' && ' · черновик'}
                   </span>
                 </th>
                 {data.periods.map((period) => {
-                  const lesson = lessonAt(room, period);
+                  const entries = lessonsAt(lessons, period);
                   const place = `Ауд. ${room.number}, ${periodTime(period)}`;
-                  const cell = lesson ? <LessonCell lesson={lesson} /> : <FreeCell />;
                   return (
                     <td key={period.id} className="h-[76px] px-2 py-2 align-top last:pr-6">
-                      {!editable ? (
-                        cell
-                      ) : lesson ? (
-                        <Link
-                          to={`/schedule/${encodeURIComponent(lesson.id)}/edit?date=${date}`}
-                          aria-label={`Изменить занятие: ${lesson.subject ?? 'учебное занятие'}, ${place}`}
-                          className={cellLink}
-                        >
-                          {cell}
-                        </Link>
-                      ) : (
+                      {entries.length > 0 ? (
+                        <div className="space-y-2">
+                          {entries.map((lesson) => editable ? (
+                            <Link key={lesson.id}
+                              to={`/schedule/${encodeURIComponent(lesson.id)}/edit?date=${date}`}
+                              aria-label={`Изменить занятие: ${lesson.subject}, ${place}`}
+                              className={cellLink}>
+                              <LessonCell lesson={lesson} />
+                            </Link>
+                          ) : <LessonCell key={lesson.id} lesson={lesson} />)}
+                        </div>
+                      ) : editable ? (
                         <Link
                           to={`/schedule/new?date=${date}&room=${encodeURIComponent(room.id)}&period=${encodeURIComponent(period.id)}`}
                           aria-label={`Добавить занятие: ${place}`}
                           className={cellLink}
                         >
-                          {cell}
+                          <FreeCell />
                         </Link>
-                      )}
+                      ) : <FreeCell />}
                     </td>
                   );
                 })}
@@ -182,6 +161,7 @@ export function SchedulePage() {
   const [params, setParams] = useSearchParams();
   const param = params.get('date');
   const date = isDate(param) ? param : today();
+  const loadSchedule = useCallback((signal: AbortSignal) => scheduleApi.schedule(date, signal), [date]);
   const { result, retry } = useRequest(loadSchedule);
   const isAdmin = useSession((state) => state.user?.role === 'admin');
 
@@ -219,7 +199,7 @@ export function SchedulePage() {
             <div className="mt-6">
               <StatePanel title="Учебные периоды не заданы" text="Расписание появится после настройки учебных периодов." />
             </div>
-          ) : result.data.rooms.length === 0 ? (
+          ) : result.data.items.length === 0 ? (
             <div className="mt-6">
               <StatePanel title="Аудитории пока не добавлены" text="Расписание появится после добавления аудиторий администратором." />
             </div>

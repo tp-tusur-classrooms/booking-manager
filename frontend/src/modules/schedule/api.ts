@@ -8,8 +8,6 @@ export interface Period {
   end_time: string;
 }
 
-export type WeekParity = 'every' | 'odd' | 'even';
-
 export interface RoomSummary {
   id: string;
   number: string;
@@ -20,11 +18,10 @@ export interface Lesson {
   id: string;
   room: RoomSummary;
   period: Period;
-  weekday: number;
-  week_parity: WeekParity;
-  starts_on: string;
-  ends_on: string;
-  subject: string | null;
+  date: string;
+  starts_at: string;
+  ends_at: string;
+  subject: string;
   group: string | null;
   teacher: string | null;
 }
@@ -32,22 +29,38 @@ export interface Lesson {
 export interface LessonWrite {
   room_id: string;
   period_id: string;
-  weekday: number;
-  week_parity: WeekParity;
-  starts_on: string;
-  ends_on: string;
-  subject: string | null;
+  date: string;
+  subject: string;
   group: string | null;
   teacher: string | null;
 }
 
+export interface ClassroomCalendar {
+  room: RoomSummary;
+  lessons: Lesson[];
+}
+
+export interface DaySchedule {
+  date: string;
+  timezone: string;
+  starts_at: string;
+  ends_at: string;
+  periods: Period[];
+  items: ClassroomCalendar[];
+}
+
 export const scheduleApi = {
+  async schedule(date: string, signal: AbortSignal) {
+    const { data } = await api.get<DaySchedule>('/schedule', { params: { date }, signal });
+    if (!Array.isArray(data?.items) || !Array.isArray(data?.periods)) throw new Error('Некорректное расписание');
+    return data;
+  },
   async periods(signal: AbortSignal) {
     const { data } = await api.get<{ items: Period[] }>('/periods', { signal });
     return [...data.items].sort((a, b) => a.order - b.order);
   },
-  async lessons(signal: AbortSignal) {
-    const { data } = await api.get<{ items: Lesson[] }>('/lessons', { signal });
+  async lessons(signal: AbortSignal, date?: string) {
+    const { data } = await api.get<{ items: Lesson[] }>('/lessons', { signal, params: { date } });
     return data.items;
   },
   async lesson(id: string, signal: AbortSignal) {
