@@ -36,6 +36,7 @@ def normalize_photo(content: bytes) -> tuple[bytes, str]:
                 image.load()
                 result = ImageOps.exif_transpose(image)
                 result.thumbnail((1920, 1920), Image.Resampling.LANCZOS)
+                result.info.clear()
                 output = io.BytesIO()
                 if image.format == "JPEG":
                     result.convert("RGB").save(output, format="JPEG", quality=90)

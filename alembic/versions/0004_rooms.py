@@ -42,7 +42,7 @@ def upgrade() -> None:
     op.create_index(
         "uq_room_building_number",
         "room",
-        ["building_id", sa.text("lower(number)")],
+        ["building_id", sa.text('lower(number COLLATE "pg_unicode_fast")')],
         unique=True,
     )
     op.create_table(

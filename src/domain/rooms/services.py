@@ -49,6 +49,7 @@ class RoomService:
             equipment=[Reference.model_validate(item) for item in room.equipment],
             description=room.description,
             photo_url=photo_url,
+            status="published",
         )
 
     async def buildings(self) -> ReferenceList:

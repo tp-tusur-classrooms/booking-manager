@@ -46,7 +46,7 @@ class Room(BaseModel):
     equipment: list[Reference]
     description: str | None
     photo_url: str | None
-    status: Literal["published"] = "published"
+    status: Literal["published"]
 
 
 class RoomList(BaseModel):

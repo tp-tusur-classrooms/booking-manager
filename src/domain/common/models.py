@@ -102,7 +102,10 @@ class Room(Base, AuditMixin):
 
     __table_args__ = (
         sa.Index(
-            "uq_room_building_number", building_id, sa.func.lower(number), unique=True
+            "uq_room_building_number",
+            building_id,
+            sa.func.lower(number.collate("pg_unicode_fast")),
+            unique=True,
         ),
         sa.CheckConstraint(
             "number = btrim(number) AND length(number) > 0", name="ck_room_number"
